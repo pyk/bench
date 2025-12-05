@@ -24,6 +24,15 @@ fn sleepWork() !void {
     std.mem.doNotOptimizeAway(io);
 }
 
+// Global buffer for memory test
+var src_buf: [16 * 1024]u8 = undefined;
+var dst_buf: [16 * 1024]u8 = undefined;
+
+fn copyWork() !void {
+    @memcpy(&dst_buf, &src_buf);
+    std.mem.doNotOptimizeAway(dst_buf);
+}
+
 test "run: basic check" {
     const allocator = testing.allocator;
     const stats_noop = try bench.run(allocator, noOp, .{});
@@ -58,4 +67,16 @@ test "run: basic check" {
 
     const tolerance = 2 * std.time.ns_per_ms;
     try testing.expect(stats_sleep.median_ns < (target_ns + tolerance));
+}
+
+test "run: bandwidth check" {
+    const allocator = testing.allocator;
+    @memset(&src_buf, 0xAA);
+    const stats = try bench.run(allocator, copyWork, .{
+        .sample_size = 1000,
+        .bytes_per_op = src_buf.len,
+    });
+
+    try testing.expect(stats.mb_sec > 0);
+    try testing.expect(stats.mb_sec > 1.0); // Sanity check
 }

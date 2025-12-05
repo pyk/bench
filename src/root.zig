@@ -15,11 +15,14 @@ pub const Stats = struct {
     median_ns: u64,
     std_dev_ns: f64,
     samples: usize,
+    ops_sec: f64,
+    mb_sec: f64,
 };
 
 pub const Options = struct {
     warmup_iters: u64 = 100,
     sample_size: u64 = 1000,
+    bytes_per_op: usize = 0,
 };
 
 pub fn run(allocator: Allocator, function: VoidFn, options: Options) !Stats {
@@ -55,6 +58,16 @@ pub fn run(allocator: Allocator, function: VoidFn, options: Options) !Stats {
     }
     const variance = sum_sq_diff / @as(f64, @floatFromInt(options.sample_size));
 
+    // Calculate Operations Per Second
+    const ops_sec = if (mean > 0) 1_000_000_000.0 / mean else 0;
+
+    // Calculate MB/s (Megabytes per second)
+    // Formula: (Ops/Sec * Bytes/Op) / 1,000,000
+    const mb_sec = if (options.bytes_per_op > 0)
+        (ops_sec * @as(f64, @floatFromInt(options.bytes_per_op))) / 1_000_000.0
+    else
+        0;
+
     return Stats{
         .min_ns = samples[0],
         .max_ns = samples[samples.len - 1],
@@ -62,6 +75,8 @@ pub fn run(allocator: Allocator, function: VoidFn, options: Options) !Stats {
         .median_ns = samples[options.sample_size / 2],
         .std_dev_ns = math.sqrt(variance),
         .samples = options.sample_size,
+        .ops_sec = ops_sec,
+        .mb_sec = mb_sec,
     };
 }
 
