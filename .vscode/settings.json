@@ -4,7 +4,7 @@
     ".zig-cache": true
   },
   "zig.path": "${workspaceFolder}/.mise/installs/http-zig/0.16.0-dev.1484+d0ba6642b/zig",
-  "zig.zls.path": "${workspaceFolder}/.mise/installs/zls/0.16.0-dev.42+1e267a7b/zls",
+  "zig.zls.path": "${workspaceFolder}/.mise/installs/zls/0.16.0-dev.57+f2873553/zls",
   "zig.testArgs": ["build", "test", "-Dtest-filter=${filter}"],
   "editor.rulers": [80]
 }
