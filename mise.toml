@@ -1,0 +1,10 @@
+[env]
+MISE_INSTALLS_DIR = "{{config_root}}/.mise/installs"
+_.path = ["./zig-out/bin"]
+
+[settings]
+experimental = true
+
+[tools]
+"http:zig" = { version = "0.16.0-dev.1484+d0ba6642b", url = "https://ziglang.org/builds/zig-x86_64-linux-0.16.0-dev.1484+d0ba6642b.tar.xz", checksum = "sha256:3f90582cde6e4ea4a9b9b1dd283a6720131dfefbece1c85be2f4c82ab74a2e7b", size = 54737932 }
+zls = "0.16.0-dev.57+f2873553"
