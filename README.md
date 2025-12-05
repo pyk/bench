@@ -3,7 +3,7 @@
 Tiny benchmarking library for Zig.
 
 ```zig
-const bench = @import("root.zig");
+const bench = @import("bench");
 
 pub fn main() !void {
     // Add your allocator here
