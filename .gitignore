@@ -1,0 +1,10 @@
+# mise
+.mise
+
+# zig
+.zig-cache
+zig-out
+
+# copilot / gemini
+copilot-docs
+repomix-*.xml
