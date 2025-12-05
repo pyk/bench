@@ -29,7 +29,10 @@ fn sleepWork() !void {
 Default reporter looks like this:
 
 ```
-
+Name       |     Median |       Mean |       StdDev |     Throughput
+--------------------------------------------------------------------
+NoOp       |      60 ns |      58 ns |      3.88 ns |  17108933 op/s
+Sleep      | 1058766 ns | 1058698 ns |   2950.23 ns |       945 op/s
 ```
 
 This tiny benchmark library support (✅) various metrics:
@@ -65,8 +68,61 @@ Other metrics will be added as needed. Feel free to send a pull request.
 
 Fetch latest version:
 
-```
+```sh
 zig fetch --save=bench https://github.com/pyk/bench/archive/main.tar.gz
+```
+
+Add `bench` as a dependency to your `build.zig`.
+
+If you are using it only for tests/benchmarks, it is recommended to mark it as
+lazy:
+
+```zig
+.dependencies = .{
+    .bench = .{
+        .url = "...",
+        .hash = "...",
+        .lazy = true, // here
+    },
+}
+```
+
+## Notes
+
+- This library is designed to show you "what", not "why". I recommend using a
+  proper profiling tool such as `perf` on linux + Firefox Profiler to answer
+  "why".
+- `doNotOptimizeAway` is your friend. For example if you are benchmarking some
+  scanner/tokenizer:
+
+  ```zig
+    while (true) {
+        const token = try scanner.next();
+        if (token == .end) break;
+        total_ops += 1;
+        std.mem.doNotOptimizeAway(token); // CRITICAL
+    }
+  ```
+
+## Development
+
+Install the Zig toolchain via mise (optional):
+
+```shell
+mise trust
+mise install
+```
+
+Run tests:
+
+```bash
+zig build test --summary all
+```
+
+Build library:
+
+```bash
+zig build
 ```
 
 ## License
