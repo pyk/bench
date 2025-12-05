@@ -1,9 +1,13 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const math = std.math;
 const sort = std.sort;
 const Timer = std.time.Timer;
 const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
+const tty = std.Io.tty;
+
+const Perf = @import("Perf.zig");
 
 /// A specific function pointer type, strictly enforcing fn() void
 const VoidFn = *const fn () anyerror!void;
@@ -11,14 +15,21 @@ const VoidFn = *const fn () anyerror!void;
 /// Metrics of the execution
 pub const Metrics = struct {
     name: []const u8,
+    // Time
     min_ns: u64,
     max_ns: u64,
-    mean_ns: u64,
+    mean_ns: f64,
     median_ns: u64,
     std_dev_ns: f64,
+    // Throughput
     samples: usize,
     ops_sec: f64,
     mb_sec: f64,
+    // Hardware (Linux only, 0 otherwise)
+    cycles: f64 = 0,
+    instructions: f64 = 0,
+    ipc: f64 = 0,
+    cache_misses: f64 = 0,
 };
 
 pub const Options = struct {
@@ -47,6 +58,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
 
     for (0..options.sample_size) |i| {
         timer.reset();
+        std.mem.doNotOptimizeAway(function);
         try function();
         samples[i] = timer.read();
     }
@@ -77,98 +89,154 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
     else
         0;
 
+    var cycles: f64 = 0;
+    var instructions: f64 = 0;
+    var cache_misses: f64 = 0;
+    var ipc: f64 = 0;
+
+    if (builtin.os.tag == .linux) {
+        var perf = try Perf.init();
+        defer perf.deinit();
+
+        try perf.capture();
+        for (0..options.sample_size) |_| {
+            std.mem.doNotOptimizeAway(function);
+            try function();
+        }
+        try perf.stop();
+
+        const m = perf.read();
+
+        // Average over the sample size using floating point division
+        const sample_f = @as(f64, @floatFromInt(options.sample_size));
+        cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
+        instructions = @as(f64, @floatFromInt(m.instructions)) / sample_f;
+        cache_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
+
+        if (cycles > 0) {
+            ipc = instructions / cycles;
+        }
+    }
+
     return Metrics{
         .name = name,
         .min_ns = samples[0],
         .max_ns = samples[samples.len - 1],
-        .mean_ns = @as(u64, @intFromFloat(mean)),
+        .mean_ns = mean,
         .median_ns = samples[options.sample_size / 2],
         .std_dev_ns = math.sqrt(variance),
         .samples = options.sample_size,
         .ops_sec = ops_sec,
         .mb_sec = mb_sec,
+        .cycles = cycles,
+        .instructions = instructions,
+        .ipc = ipc,
+        .cache_misses = cache_misses,
     };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// reporters
+
+fn writeColor(writer: anytype, color: tty.Color, text: []const u8) !void {
+    const config = tty.Config.detect(std.fs.File.stdout());
+    if (config != .no_color) {
+        switch (color) {
+            .reset => try writer.writeAll("\x1b[0m"),
+            .red => try writer.writeAll("\x1b[31m"),
+            .green => try writer.writeAll("\x1b[32m"),
+            .blue => try writer.writeAll("\x1b[34m"),
+            .cyan => try writer.writeAll("\x1b[36m"),
+            .dim => try writer.writeAll("\x1b[2m"),
+            .black => try writer.writeAll("\x1b[90m"),
+            else => try writer.writeAll(""),
+        }
+    }
+    try writer.writeAll(text);
+    if (config != .no_color) try writer.writeAll("\x1b[0m");
 }
 
 /// Writes the formatted report to a specific writer
 pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
     if (options.metrics.len == 0) return;
 
-    // Calculate Columns Widths
-    var max_name_len: usize = 4; //  Min width for "Name"
-    var has_bandwidth = false;
+    try writer.print("Benchmark Summary: {d} benchmarks run\n", .{options.metrics.len});
 
-    for (options.metrics) |res| {
-        if (res.name.len > max_name_len) max_name_len = res.name.len;
-        if (res.mb_sec > 0.001) has_bandwidth = true;
-    }
+    var max_name_len: usize = 0;
+    for (options.metrics) |m| max_name_len = @max(max_name_len, m.name.len);
 
-    // Print Header
-    try writer.writeAll("Name");
-    _ = try writer.splatByte(' ', max_name_len - 4);
-    try writer.print(" | {s:>10} | {s:>10} | {s:>12}", .{ "Median", "Mean", "StdDev" });
+    for (options.metrics, 0..) |m, i| {
+        const is_last_item = i == options.metrics.len - 1;
 
-    if (has_bandwidth) {
-        try writer.print(" | {s:>14}", .{"Bandwidth"});
-    } else {
-        try writer.print(" | {s:>14}", .{"Throughput"});
-    }
+        // --- ROW 1: High Level (Name | Time | Speed | Comparison) ---
+        const tree_char = if (is_last_item) "└─ " else "├─ ";
+        try writeColor(writer, .bright_black, tree_char);
+        try writeColor(writer, .cyan, m.name);
+        // try writer.print("{s}{s}", .{ tree_char, m.name });
 
-    if (options.baseline_index) |idx| {
-        if (idx < options.metrics.len) {
-            try writer.print(" | {s:>15}", .{"vs Base"});
-        }
-    }
-    try writer.print("\n", .{});
+        // Align name
+        const padding = max_name_len - m.name.len + 2;
+        _ = try writer.splatByte(' ', padding);
 
-    // Separator
-    {
-        const baseline_width = if (options.baseline_index != null) @as(usize, 18) else 0;
-        const total_width: usize = max_name_len + 3 + 10 + 3 + 10 + 3 + 12 + 3 + 14 + baseline_width;
-        _ = try writer.splatByte('-', total_width);
-        try writer.print("\n", .{});
-    }
+        try fmtTime(writer, @as(f64, @floatFromInt(m.median_ns)));
+        try writer.writeAll("   ");
 
-    // Print Rows
-    for (options.metrics, 0..) |s, i| {
-        try writer.print("{s}", .{s.name});
-        _ = try writer.splatByte(' ', max_name_len - s.name.len);
-
-        try writer.print(" | {d:>7} ns | {d:>7} ns | {d:>9.2} ns", .{ s.median_ns, s.mean_ns, s.std_dev_ns });
-
-        if (has_bandwidth) {
-            if (s.mb_sec >= 1000) {
-                try writer.print(" | {d:>9.2} GB/s", .{s.mb_sec / 1000.0});
-            } else {
-                try writer.print(" | {d:>9.2} MB/s", .{s.mb_sec});
-            }
+        if (m.mb_sec > 0.001) {
+            try fmtBandwidth(writer, m.mb_sec);
         } else {
-            try writer.print(" | {d:>9.0} op/s", .{s.ops_sec});
+            try fmtOps(writer, m.ops_sec);
         }
 
-        // Comparison Logic
+        // Comparison (On the first line now)
         if (options.baseline_index) |base_idx| {
-            if (base_idx < options.metrics.len) {
+            try writer.writeAll("   ");
+            if (i == base_idx) {
+                try writeColor(writer, .blue, "[baseline]");
+            } else if (base_idx < options.metrics.len) {
                 const base = options.metrics[base_idx];
-                if (i == base_idx) {
-                    try writer.print(" | {s:>15}", .{"-"});
-                } else {
-                    const base_f = @as(f64, @floatFromInt(base.median_ns));
-                    const curr_f = @as(f64, @floatFromInt(s.median_ns));
+                const base_f = @as(f64, @floatFromInt(base.median_ns));
+                const curr_f = @as(f64, @floatFromInt(m.median_ns));
 
-                    if (curr_f > 0 and base_f > 0) {
-                        if (curr_f < base_f) {
-                            try writer.print(" | {d:>8.2}x faster", .{base_f / curr_f});
-                        } else {
-                            try writer.print(" | {d:>8.2}x slower", .{curr_f / base_f});
-                        }
+                if (curr_f > 0 and base_f > 0) {
+                    if (curr_f < base_f) {
+                        try writer.writeAll("\x1b[32m"); // Green manually to mix with print
+                        try writer.print("{d:.2}x faster", .{base_f / curr_f});
+                        try writer.writeAll("\x1b[0m");
                     } else {
-                        try writer.print(" | {s:>15}", .{"?"});
+                        try writer.writeAll("\x1b[31m");
+                        try writer.print("{d:.2}x slower", .{curr_f / base_f});
+                        try writer.writeAll("\x1b[0m");
                     }
+                } else {
+                    try writer.writeAll("-");
                 }
             }
         }
-        try writer.print("\n", .{});
+        try writer.writeByte('\n');
+
+        // --- ROW 2: Low Level (Hardware) ---
+        // Only printed if we have hardware stats
+        if (m.instructions > 0) {
+            const sub_tree_prefix = if (is_last_item) "   └─ " else "│  └─ ";
+            try writer.writeAll(sub_tree_prefix);
+
+            try writeColor(writer, .dim, "cycles: ");
+            try fmtInt(writer, m.cycles);
+
+            try writer.writeAll("\t");
+            try writeColor(writer, .dim, "instructions: ");
+            try fmtInt(writer, m.instructions);
+
+            try writer.writeAll("\t");
+            try writeColor(writer, .dim, "ipc: ");
+            try writer.print("{d:.2}", .{m.ipc});
+
+            try writer.writeAll("\t");
+            try writeColor(writer, .dim, "miss: ");
+            try fmtInt(writer, m.cache_misses);
+
+            try writer.writeByte('\n');
+        }
     }
 }
 
@@ -180,6 +248,87 @@ pub fn report(options: ReportOptions) !void {
     try writeReport(stdout, options);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// formatters
+
+fn fmtInt(writer: *Writer, val: f64) !void {
+    if (val < 1000) {
+        try writer.print("{d:.0}", .{val});
+    } else if (val < 1_000_000) {
+        try writer.print("{d:.1}k", .{val / 1000.0});
+    } else if (val < 1_000_000_000) {
+        try writer.print("{d:.1}M", .{val / 1_000_000.0});
+    } else {
+        try writer.print("{d:.1}G", .{val / 1_000_000_000.0});
+    }
+}
+
+fn fmtTime(writer: *Writer, ns: f64) !void {
+    var buf: [64]u8 = undefined;
+    var slice: []u8 = undefined;
+
+    if (ns < 1000) {
+        slice = try std.fmt.bufPrint(&buf, "{d:.0}ns", .{ns});
+    } else if (ns < 1_000_000) {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}us", .{ns / 1000.0});
+    } else if (ns < 1_000_000_000) {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}ms", .{ns / 1_000_000.0});
+    } else {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}s", .{ns / 1_000_000_000.0});
+    }
+    try padLeft(writer, slice, 9);
+}
+
+fn fmtOps(writer: *Writer, ops: f64) !void {
+    var buf: [64]u8 = undefined;
+    var slice: []u8 = undefined;
+
+    if (ops < 1000) {
+        slice = try std.fmt.bufPrint(&buf, "{d:.0}/s", .{ops});
+    } else if (ops < 1_000_000) {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}K/s", .{ops / 1000.0});
+    } else if (ops < 1_000_000_000) {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}M/s", .{ops / 1_000_000.0});
+    } else {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}G/s", .{ops / 1_000_000_000.0});
+    }
+    try padLeft(writer, slice, 11);
+}
+
+fn fmtBandwidth(writer: *Writer, mb: f64) !void {
+    var buf: [64]u8 = undefined;
+    var slice: []u8 = undefined;
+
+    if (mb >= 1000) {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}GB/s", .{mb / 1000.0});
+    } else {
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}MB/s", .{mb});
+    }
+    try padLeft(writer, slice, 11);
+}
+
+// Pads with spaces on the left (for numbers)
+fn padLeft(writer: *Writer, text: []const u8, width: usize) !void {
+    if (text.len < width) {
+        _ = try writer.splatByte(' ', width - text.len);
+    }
+    try writer.writeAll(text);
+}
+
+// Pads with spaces on the right (for text/comparisons)
+fn padRight(writer: *Writer, text: []const u8, width: usize) !void {
+    try writer.writeAll(text);
+    if (text.len < width) {
+        _ = try writer.splatByte(' ', width - text.len);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+
 test {
     _ = @import("test.zig");
+    if (builtin.os.tag == .linux) {
+        _ = @import("Perf.test.zig");
+    }
 }
