@@ -95,7 +95,7 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
     if (options.metrics.len == 0) return;
 
     // Calculate Columns Widths
-    var max_name_len: usize = 4; // "Name"
+    var max_name_len: usize = 4; //  Min width for "Name"
     var has_bandwidth = false;
 
     for (options.metrics) |res| {
@@ -104,7 +104,9 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
     }
 
     // Print Header
-    try writer.print("{s:<10} | {s:>10} | {s:>10} | {s:>12}", .{ "Name", "Median", "Mean", "StdDev" });
+    try writer.writeAll("Name");
+    _ = try writer.splatByte(' ', max_name_len - 4);
+    try writer.print(" | {s:>10} | {s:>10} | {s:>12}", .{ "Median", "Mean", "StdDev" });
 
     if (has_bandwidth) {
         try writer.print(" | {s:>14}", .{"Bandwidth"});
@@ -114,23 +116,25 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
 
     if (options.baseline_index) |idx| {
         if (idx < options.metrics.len) {
-            try writer.print(" | {s:>10}", .{"vs Base"});
+            try writer.print(" | {s:>15}", .{"vs Base"});
         }
     }
     try writer.print("\n", .{});
 
     // Separator
     {
-        const baseline_width = if (options.baseline_index != null) @as(usize, 13) else 0;
+        const baseline_width = if (options.baseline_index != null) @as(usize, 18) else 0;
         const total_width: usize = max_name_len + 3 + 10 + 3 + 10 + 3 + 12 + 3 + 14 + baseline_width;
-        var i: usize = 0;
-        while (i < total_width) : (i += 1) _ = try writer.write("-");
+        _ = try writer.splatByte('-', total_width);
         try writer.print("\n", .{});
     }
 
     // Print Rows
     for (options.metrics, 0..) |s, i| {
-        try writer.print("{s:<10} | {d:>7} ns | {d:>7} ns | {d:>9.2} ns", .{ s.name, s.median_ns, s.mean_ns, s.std_dev_ns });
+        try writer.print("{s}", .{s.name});
+        _ = try writer.splatByte(' ', max_name_len - s.name.len);
+
+        try writer.print(" | {d:>7} ns | {d:>7} ns | {d:>9.2} ns", .{ s.median_ns, s.mean_ns, s.std_dev_ns });
 
         if (has_bandwidth) {
             if (s.mb_sec >= 1000) {
@@ -147,21 +151,19 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
             if (base_idx < options.metrics.len) {
                 const base = options.metrics[base_idx];
                 if (i == base_idx) {
-                    try writer.print(" | {s:>10}", .{"-"});
+                    try writer.print(" | {s:>15}", .{"-"});
                 } else {
                     const base_f = @as(f64, @floatFromInt(base.median_ns));
                     const curr_f = @as(f64, @floatFromInt(s.median_ns));
 
                     if (curr_f > 0 and base_f > 0) {
                         if (curr_f < base_f) {
-                            // Faster
-                            try writer.print(" | {d:>9.2}x", .{base_f / curr_f});
+                            try writer.print(" | {d:>8.2}x faster", .{base_f / curr_f});
                         } else {
-                            // Slower
-                            try writer.print(" | {d:>9.2}x", .{curr_f / base_f});
+                            try writer.print(" | {d:>8.2}x slower", .{curr_f / base_f});
                         }
                     } else {
-                        try writer.print(" | {s:>10}", .{"?"});
+                        try writer.print(" | {s:>15}", .{"?"});
                     }
                 }
             }
