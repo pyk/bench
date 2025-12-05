@@ -8,6 +8,7 @@ const bench = @import("root.zig");
 pub fn main() !void {
     // Add your allocator here
 
+    // Run the benchmark, collect some metrics
     const metrics = try bench.run(allocator, "Sleep", sleepWork, .{});
 
     // Do anything with metrics here
