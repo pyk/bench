@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Zig Build",
+      "type": "shell",
+      "command": "mise exec -- zig build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$zig"]
+    },
+    {
+      "label": "Zig Test",
+      "type": "shell",
+      "command": "mise exec -- zig build test --summary all",
+      "group": "test",
+      "problemMatcher": ["$zig"]
+    },
+    {
+      "label": "Zig Version",
+      "type": "shell",
+      "command": "mise exec -- zig version",
+      "group": "none",
+      "problemMatcher": ["$zig"],
+      "isBackground": true
+    }
+  ]
+}
