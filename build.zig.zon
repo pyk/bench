@@ -1,0 +1,7 @@
+.{
+    .name = .bench,
+    .version = "0.0.1",
+    .fingerprint = 0x66d8e325f60cb8ce,
+    .minimum_zig_version = "0.16.0-dev.1484+d0ba6642b",
+    .paths = .{""},
+}
