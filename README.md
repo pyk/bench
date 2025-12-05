@@ -28,11 +28,14 @@ fn sleepWork() !void {
 
 Default reporter looks like this:
 
-```
-Name       |     Median |       Mean |       StdDev |     Throughput
---------------------------------------------------------------------
-NoOp       |      60 ns |      58 ns |      3.88 ns |  17108933 op/s
-Sleep      | 1058766 ns | 1058698 ns |   2950.23 ns |       945 op/s
+```sh
+Benchmark Summary: 3 benchmarks run
+├─ NoOp        60ns      16.80M/s   [baseline]
+│  └─ cycles: 14        instructions: 36        ipc: 2.51       miss: 0
+├─ Sleep     1.06ms         944/s   17648.20x slower
+│  └─ cycles: 4.1k      instructions: 2.9k      ipc: 0.72       miss: 17
+└─ Busy     32.38us      30.78K/s   539.68x slower
+   └─ cycles: 150.1k    instructions: 700.1k    ipc: 4.67       miss: 0
 ```
 
 This tiny benchmark library support (✅) various metrics:
@@ -53,10 +56,10 @@ This tiny benchmark library support (✅) various metrics:
 | Latency     | Histogram                    | Visual distribution of all runs                              |
 | Memory      | Bytes Allocated              | Total heap memory requested per iteration                    |
 | Memory      | Allocation Count             | Number of allocation calls                                   |
-| CPU         | Cycles                       | CPU clock cycles used                                        |
-| CPU         | Instructions                 | Total CPU instructions executed                              |
-| CPU         | IPC                          | Instructions Per Cycle (Efficiency)                          |
-| CPU         | Cache Misses                 | L1/L2 Cache misses                                           |
+| CPU         | ✅ Cycles                    | CPU clock cycles used                                        |
+| CPU         | ✅ Instructions              | Total CPU instructions executed                              |
+| CPU         | ✅ IPC                       | Instructions Per Cycle (Efficiency)                          |
+| CPU         | ✅ Cache Misses              | L1/L2 Cache misses                                           |
 | Comparative | ✅ Speedup (x)               | "12.5x faster" (Current / Baseline).                         |
 | Comparative | Relative Diff (%)            | "+ 50%" or "- 10%".                                          |
 | Comparative | Big O                        | Complexity Analysis (O(n), O(log n)).                        |
@@ -104,6 +107,10 @@ lazy:
     }
   ```
 
+- To get `cycles`, `instructions`, `ipc` (instructions per cycle) and
+  `cache_misses` metrics on Linux, you may need to enable the
+  `kernel.perf_event_paranoid`.
+
 ## Development
 
 Install the Zig toolchain via mise (optional):
@@ -123,6 +130,16 @@ Build library:
 
 ```bash
 zig build
+```
+
+Enable/disable `kernel.perf_event_paranoid` for debugging:
+
+```sh
+# Disable
+sudo sysctl -w kernel.perf_event_paranoid=3
+
+# Enable
+sudo sysctl -w kernel.perf_event_paranoid=-1
 ```
 
 ## License
