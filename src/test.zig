@@ -35,48 +35,80 @@ fn copyWork() !void {
 
 test "run: basic check" {
     const allocator = testing.allocator;
-    const stats_noop = try bench.run(allocator, noOp, .{});
+    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{});
 
     // The minimum cannot be larger than the maximum
-    try testing.expect(stats_noop.min_ns <= stats_noop.max_ns);
+    try testing.expect(noop_metrics.min_ns <= noop_metrics.max_ns);
 
     // The median must be within the bounds
-    try testing.expect(stats_noop.median_ns >= stats_noop.min_ns);
-    try testing.expect(stats_noop.median_ns <= stats_noop.max_ns);
+    try testing.expect(noop_metrics.median_ns >= noop_metrics.min_ns);
+    try testing.expect(noop_metrics.median_ns <= noop_metrics.max_ns);
 
     // Execution must take some time (non-zero)
-    try testing.expect(stats_noop.min_ns > 0);
+    try testing.expect(noop_metrics.min_ns > 0);
 
-    const stats_busy = try bench.run(allocator, busyWork, .{});
+    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{});
 
     // The busy function MUST be slower than the no-op
-    try testing.expect(stats_busy.median_ns > stats_noop.median_ns);
+    try testing.expect(busy_metrics.median_ns > noop_metrics.median_ns);
 
     // The gap should be significant (e.g busy is at least 2x slower)
     // This proves the tool is actually measuring the function body,
     // not just the overhead of the tool itself.
-    try testing.expect(stats_busy.median_ns > (stats_noop.median_ns * 2));
+    try testing.expect(busy_metrics.median_ns > (noop_metrics.median_ns * 2));
 
-    const stats_sleep = try bench.run(allocator, sleepWork, .{});
+    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{});
     const target_ns = 1 * std.time.ns_per_ms;
 
     // We check if the result is reasonably close to 1ms.
     // Note: OS Sleep is imprecise. It will always be >= target, never less.
     // We allow a "scheduler noise" overhead (e.g., +2ms tolerance for CI environments).
-    try testing.expect(stats_sleep.median_ns >= target_ns);
+    try testing.expect(sleep_metrics.median_ns >= target_ns);
 
     const tolerance = 2 * std.time.ns_per_ms;
-    try testing.expect(stats_sleep.median_ns < (target_ns + tolerance));
+    try testing.expect(sleep_metrics.median_ns < (target_ns + tolerance));
 }
 
 test "run: bandwidth check" {
     const allocator = testing.allocator;
     @memset(&src_buf, 0xAA);
-    const stats = try bench.run(allocator, copyWork, .{
+    const metrics = try bench.run(allocator, "Copy", copyWork, .{
         .sample_size = 1000,
         .bytes_per_op = src_buf.len,
     });
 
-    try testing.expect(stats.mb_sec > 0);
-    try testing.expect(stats.mb_sec > 1.0); // Sanity check
+    try testing.expect(metrics.mb_sec > 0);
+    try testing.expect(metrics.mb_sec > 1.0); // Sanity check
+}
+
+test "report: output" {
+    const allocator = testing.allocator;
+    @memset(&src_buf, 0xAA);
+    const copy_metrics = try bench.run(allocator, "Copy", copyWork, .{
+        .sample_size = 1000,
+        .bytes_per_op = src_buf.len,
+    });
+
+    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{});
+    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{});
+    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{});
+
+    var single: std.Io.Writer.Allocating = .init(allocator);
+    defer single.deinit();
+    try bench.writeReport(&single.writer, .{ .metrics = &.{copy_metrics} });
+
+    var double: std.Io.Writer.Allocating = .init(allocator);
+    defer double.deinit();
+    try bench.writeReport(&double.writer, .{ .metrics = &.{ noop_metrics, sleep_metrics } });
+
+    var baseline: std.Io.Writer.Allocating = .init(allocator);
+    defer baseline.deinit();
+    try bench.writeReport(&baseline.writer, .{
+        .metrics = &.{ noop_metrics, sleep_metrics, busy_metrics },
+        .baseline_index = 0,
+    });
+
+    std.debug.print("\nsingle:\n{s}\n", .{single.written()});
+    std.debug.print("\ndouble:\n{s}\n", .{double.written()});
+    std.debug.print("\nbaseline:\n{s}\n", .{baseline.written()});
 }
