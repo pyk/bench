@@ -111,6 +111,14 @@ lazy:
   `cache_misses` metrics on Linux, you may need to enable the
   `kernel.perf_event_paranoid`.
 
+## Prior Art
+
+- [hendriknielaender/zBench](https://github.com/hendriknielaender/zBench)
+- [Hejsil/zig-bench](https://github.com/Hejsil/zig-bench)
+- [briangold/metron](https://github.com/briangold/metron)
+- [dweiller/zubench](https://github.com/dweiller/zubench)
+- [briangold/metron](https://github.com/briangold/metron)
+
 ## Development
 
 Install the Zig toolchain via mise (optional):
