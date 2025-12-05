@@ -21,4 +21,26 @@ pub fn build(b: *std.Build) void {
     });
     const mod_test_run = b.addRunArtifact(mod_test);
     test_step.dependOn(&mod_test_run.step);
+
+    ///////////////////////////////////////////////////////////////////////////
+    // zig build repomix - Pack repository using repomix
+
+    var threaded: std.Io.Threaded = .init(b.allocator);
+    defer threaded.deinit();
+    const io = threaded.io();
+    const repomix_step = b.step("repomix", "Pack repository using repomix");
+    const timestamp = std.Io.Clock.Timestamp.now(io, .awake) catch @panic("failed to collect timestamp");
+    const filename = b.fmt("repomix-bench-{d}.xml", .{timestamp.raw});
+    const repomix_cmd = b.addSystemCommand(&.{
+        "npx",
+        "repomix@latest",
+        ".",
+        "--style",
+        "xml",
+        "--ignore",
+        ".github,.vscode,test",
+        "-o",
+        filename,
+    });
+    repomix_step.dependOn(&repomix_cmd.step);
 }
