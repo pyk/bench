@@ -144,10 +144,11 @@ fn assertFunctionDef(function: anytype, args: anytype) void {
 
     // Unwrap function type
     const FnType = @TypeOf(function);
-    if (@typeInfo(FnType) == .pointer) {
-        FnType = @typeInfo(FnType).pointer.child;
-    }
-    const fn_info = @typeInfo(FnType);
+    const UnwrappedFnType = if (@typeInfo(FnType) == .pointer)
+        @typeInfo(FnType).pointer.child
+    else
+        FnType;
+    const fn_info = @typeInfo(UnwrappedFnType);
     if (fn_info != .@"fn") {
         @compileError("Expected 'function' to be a function or function pointer, found " ++ @typeName(@TypeOf(function)));
     }
@@ -156,7 +157,7 @@ fn assertFunctionDef(function: anytype, args: anytype) void {
     if (fn_info.@"fn".params.len != args_info.@"struct".fields.len) {
         @compileError(std.fmt.comptimePrint(
             "Function expects {d} arguments, but args tuple has {d}",
-            .{ fn_info.Fn.params.len, args_info.Struct.fields.len },
+            .{ fn_info.@"fn".params.len, args_info.@"struct".fields.len },
         ));
     }
 }
