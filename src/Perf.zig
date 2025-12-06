@@ -3,12 +3,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
+const posix = std.posix;
 
 const Perf = @This();
 const PERF_EVENT_IOC_ID = linux.IOCTL.IOR('$', 7, u64);
 
-leader_fd: i32 = -1,
-sibling_fds: [2]i32 = .{ -1, -1 },
+leader_fd: posix.fd_t = -1,
+sibling_fds: [2]posix.fd_t = .{ -1, -1 },
 
 /// IDs assigned by the kernel to identify events in the read buffer.
 /// Indices: 0=Cycles, 1=Instructions, 2=CacheMisses
@@ -69,7 +70,7 @@ pub fn stop(self: *Perf) !void {
 
 /// Reads the counter values.
 /// Returns a struct with the collected data.
-pub fn read(self: *Perf) Measurements {
+pub fn read(self: *Perf) !Measurements {
     var m = Measurements{
         .cycles = 0,
         .instructions = 0,
@@ -82,8 +83,7 @@ pub fn read(self: *Perf) Measurements {
     // Max items = 3. Header = 3 u64. Total u64s = 3 + (2 * 3) = 9
     var buf: [16]u64 = undefined;
 
-    const rc = std.posix.read(self.leader_fd, std.mem.sliceAsBytes(&buf)) catch 0;
-    if (rc == 0) return m;
+    _ = try posix.read(self.leader_fd, std.mem.sliceAsBytes(&buf));
 
     const nr = buf[0];
     const time_enabled = buf[1];
@@ -120,7 +120,7 @@ pub fn read(self: *Perf) Measurements {
 
 const Event = enum { cpu_cycles, instructions, cache_misses };
 
-fn openEvent(event: Event, group_fd: i32) !i32 {
+fn openEvent(event: Event, group_fd: posix.fd_t) !posix.fd_t {
     const config: u64 = switch (event) {
         .cpu_cycles => @intFromEnum(linux.PERF.COUNT.HW.CPU_CYCLES),
         .instructions => @intFromEnum(linux.PERF.COUNT.HW.INSTRUCTIONS),
@@ -139,10 +139,7 @@ fn openEvent(event: Event, group_fd: i32) !i32 {
     attr.flags.exclude_kernel = true;
     attr.flags.exclude_hv = true;
 
-    const rc = linux.perf_event_open(&attr, 0, -1, group_fd, 0);
-    const fd = @as(i32, @intCast(rc));
-
-    if (fd < 0) return error.PerfOpenFailed;
+    const fd = try posix.perf_event_open(&attr, 0, -1, group_fd, 0);
     return fd;
 }
 

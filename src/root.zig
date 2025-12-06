@@ -26,10 +26,10 @@ pub const Metrics = struct {
     ops_sec: f64,
     mb_sec: f64,
     // Hardware (Linux only, 0 otherwise)
-    cycles: f64 = 0,
-    instructions: f64 = 0,
-    ipc: f64 = 0,
-    cache_misses: f64 = 0,
+    cycles: ?f64 = null,
+    instructions: ?f64 = null,
+    ipc: ?f64 = null,
+    cache_misses: ?f64 = null,
 };
 
 pub const Options = struct {
@@ -95,27 +95,28 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
     var ipc: f64 = 0;
 
     if (builtin.os.tag == .linux) {
-        var perf = try Perf.init();
-        defer perf.deinit();
+        if (Perf.init()) |p| {
+            var perf = p;
+            defer perf.deinit();
 
-        try perf.capture();
-        for (0..options.sample_size) |_| {
-            std.mem.doNotOptimizeAway(function);
-            try function();
-        }
-        try perf.stop();
+            try perf.capture();
+            for (0..options.sample_size) |_| {
+                std.mem.doNotOptimizeAway(function);
+                try function();
+            }
+            try perf.stop();
 
-        const m = perf.read();
+            const m = try perf.read();
 
-        // Average over the sample size using floating point division
-        const sample_f = @as(f64, @floatFromInt(options.sample_size));
-        cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
-        instructions = @as(f64, @floatFromInt(m.instructions)) / sample_f;
-        cache_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
+            const sample_f = @as(f64, @floatFromInt(options.sample_size));
+            cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
+            instructions = @as(f64, @floatFromInt(m.instructions)) / sample_f;
+            cache_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
 
-        if (cycles > 0) {
-            ipc = instructions / cycles;
-        }
+            if (cycles > 0) {
+                ipc = instructions / cycles;
+            }
+        } else |_| {} // skip counter if we can't open use it
     }
 
     return Metrics{
@@ -214,26 +215,30 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
         }
         try writer.writeByte('\n');
 
-        // --- ROW 2: Low Level (Hardware) ---
         // Only printed if we have hardware stats
-        if (m.instructions > 0) {
+        if (m.cycles) |cycles| {
             const sub_tree_prefix = if (is_last_item) "   └─ " else "│  └─ ";
             try writer.writeAll(sub_tree_prefix);
-
             try writeColor(writer, .dim, "cycles: ");
-            try fmtInt(writer, m.cycles);
+            try fmtInt(writer, cycles);
+        }
 
+        if (m.instructions) |instructions| {
             try writer.writeAll("\t");
             try writeColor(writer, .dim, "instructions: ");
-            try fmtInt(writer, m.instructions);
+            try fmtInt(writer, instructions);
+        }
 
+        if (m.ipc) |ipc| {
             try writer.writeAll("\t");
             try writeColor(writer, .dim, "ipc: ");
-            try writer.print("{d:.2}", .{m.ipc});
+            try writer.print("{d:.2}", .{ipc});
+        }
 
+        if (m.cache_misses) |cache_missess| {
             try writer.writeAll("\t");
             try writeColor(writer, .dim, "miss: ");
-            try fmtInt(writer, m.cache_misses);
+            try fmtInt(writer, cache_missess);
 
             try writer.writeByte('\n');
         }
