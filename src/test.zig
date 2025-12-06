@@ -35,7 +35,7 @@ fn copyWork() !void {
 
 test "run: basic check" {
     const allocator = testing.allocator;
-    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{});
+    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{}, .{});
 
     // The minimum cannot be larger than the maximum
     try testing.expect(noop_metrics.min_ns <= noop_metrics.max_ns);
@@ -47,7 +47,7 @@ test "run: basic check" {
     // Execution must take some time (non-zero)
     try testing.expect(noop_metrics.min_ns > 0);
 
-    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{});
+    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{}, .{});
 
     // The busy function MUST be slower than the no-op
     try testing.expect(busy_metrics.median_ns > noop_metrics.median_ns);
@@ -57,7 +57,7 @@ test "run: basic check" {
     // not just the overhead of the tool itself.
     try testing.expect(busy_metrics.median_ns > (noop_metrics.median_ns * 2));
 
-    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{});
+    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{}, .{});
     const target_ns = 1 * std.time.ns_per_ms;
 
     // We check if the result is reasonably close to 1ms.
@@ -72,7 +72,7 @@ test "run: basic check" {
 test "run: bandwidth check" {
     const allocator = testing.allocator;
     @memset(&src_buf, 0xAA);
-    const metrics = try bench.run(allocator, "Copy", copyWork, .{
+    const metrics = try bench.run(allocator, "Copy", copyWork, .{}, .{
         .sample_size = 1000,
         .bytes_per_op = src_buf.len,
     });
@@ -84,14 +84,14 @@ test "run: bandwidth check" {
 test "report: output" {
     const allocator = testing.allocator;
     @memset(&src_buf, 0xAA);
-    const copy_metrics = try bench.run(allocator, "Copy", copyWork, .{
+    const copy_metrics = try bench.run(allocator, "Copy", copyWork, .{}, .{
         .sample_size = 1000,
         .bytes_per_op = src_buf.len,
     });
 
-    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{});
-    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{});
-    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{});
+    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{}, .{});
+    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{}, .{});
+    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{}, .{});
 
     var single: std.Io.Writer.Allocating = .init(allocator);
     defer single.deinit();
@@ -111,4 +111,42 @@ test "report: output" {
     std.debug.print("\nsingle:\n{s}\n", .{single.written()});
     std.debug.print("\ndouble:\n{s}\n", .{double.written()});
     std.debug.print("\nbaseline:\n{s}\n", .{baseline.written()});
+}
+
+// Simulate a whitespace skipper function
+fn skipWhitespaceNaive(input: []const u8) !void {
+    var i: usize = 0;
+    while (i < input.len) : (i += 1) {
+        if (input[i] != ' ') break;
+    }
+    std.mem.doNotOptimizeAway(i);
+}
+
+fn skipWhitespaceSIMD(input: []const u8) !void {
+    // Pretend this is SIMD optimized
+    var i: usize = 0;
+    while (i < input.len) : (i += 4) {
+        if (input[i] != ' ') break;
+    }
+    std.mem.doNotOptimizeAway(i);
+}
+
+test "run: with args" {
+    const allocator = testing.allocator;
+
+    // Generate test data outside the benchmark
+    const len = 100_000;
+    var input = try allocator.alloc(u8, len);
+    defer allocator.free(input);
+    @memset(input, ' ');
+    input[len - 1] = 'x'; // Stop at the end
+
+    const m_naive = try bench.run(allocator, "Naive", skipWhitespaceNaive, .{input}, .{ .sample_size = 100 });
+    const m_simd = try bench.run(allocator, "SIMD", skipWhitespaceSIMD, .{input}, .{ .sample_size = 100 });
+
+    try testing.expect(m_naive.median_ns > 0);
+    try testing.expect(m_simd.median_ns > 0);
+
+    // The fake SIMD should be faster because it increments by 4
+    try testing.expect(m_simd.median_ns < m_naive.median_ns);
 }
