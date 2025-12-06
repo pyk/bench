@@ -9,9 +9,6 @@ const tty = std.Io.tty;
 
 const Perf = @import("Perf.zig");
 
-/// A specific function pointer type, strictly enforcing fn() void
-const VoidFn = *const fn () anyerror!void;
-
 /// Metrics of the execution
 pub const Metrics = struct {
     name: []const u8,
@@ -45,10 +42,13 @@ pub const ReportOptions = struct {
     baseline_index: ?usize = null,
 };
 
-pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Options) !Metrics {
+pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anytype, options: Options) !Metrics {
+    assertFunctionDef(function, args);
+
     for (0..options.warmup_iters) |_| {
         std.mem.doNotOptimizeAway(function);
-        try function();
+        std.mem.doNotOptimizeAway(args);
+        try @call(.auto, function, args);
     }
 
     const samples = try allocator.alloc(u64, options.sample_size);
@@ -59,7 +59,8 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
     for (0..options.sample_size) |i| {
         timer.reset();
         std.mem.doNotOptimizeAway(function);
-        try function();
+        std.mem.doNotOptimizeAway(args);
+        try @call(.auto, function, args);
         samples[i] = timer.read();
     }
 
@@ -109,7 +110,8 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
             try perf.capture();
             for (0..options.sample_size) |_| {
                 std.mem.doNotOptimizeAway(function);
-                try function();
+                std.mem.doNotOptimizeAway(args);
+                try @call(.auto, function, args);
             }
             try perf.stop();
 
@@ -130,6 +132,33 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
     }
 
     return metrics;
+}
+
+fn assertFunctionDef(function: anytype, args: anytype) void {
+    // Verify args is a tuple
+    const ArgsType = @TypeOf(args);
+    const args_info = @typeInfo(ArgsType);
+    if (args_info != .@"struct" or !args_info.@"struct".is_tuple) {
+        @compileError("Expected 'args' to be a tuple, found " ++ @typeName(ArgsType));
+    }
+
+    // Unwrap function type
+    const FnType = @TypeOf(function);
+    if (@typeInfo(FnType) == .pointer) {
+        FnType = @typeInfo(FnType).pointer.child;
+    }
+    const fn_info = @typeInfo(FnType);
+    if (fn_info != .@"fn") {
+        @compileError("Expected 'function' to be a function or function pointer, found " ++ @typeName(@TypeOf(function)));
+    }
+
+    // Verify argument count matches
+    if (fn_info.@"fn".params.len != args_info.@"struct".fields.len) {
+        @compileError(std.fmt.comptimePrint(
+            "Function expects {d} arguments, but args tuple has {d}",
+            .{ fn_info.Fn.params.len, args_info.Struct.fields.len },
+        ));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
