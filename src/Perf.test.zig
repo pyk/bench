@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 const Perf = @import("Perf.zig");
 
 test "Perf: lifecycle" {
-    var perf = try Perf.init();
+    var perf = Perf.init() catch return error.SkipZigTest;
     defer perf.deinit();
 
     try perf.capture();
@@ -14,10 +14,9 @@ test "Perf: lifecycle" {
         x +%= i;
         std.mem.doNotOptimizeAway(x);
     }
-    std.debug.print("TEST\n", .{});
 
     try perf.stop();
-    const m = perf.read();
+    const m = try perf.read();
 
     // Verify we captured instructions
     if (m.instructions == 0) {
@@ -29,7 +28,7 @@ test "Perf: lifecycle" {
 }
 
 test "Perf: cache misses" {
-    var perf = try Perf.init();
+    var perf = Perf.init() catch return error.SkipZigTest;
     defer perf.deinit();
 
     try perf.capture();
@@ -47,6 +46,6 @@ test "Perf: cache misses" {
     std.mem.doNotOptimizeAway(sum);
 
     try perf.stop();
-    const m = perf.read();
+    const m = try perf.read();
     std.debug.print("m = {any}", .{m});
 }

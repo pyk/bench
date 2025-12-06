@@ -26,10 +26,10 @@ pub const Metrics = struct {
     ops_sec: f64,
     mb_sec: f64,
     // Hardware (Linux only, 0 otherwise)
-    cycles: f64 = 0,
-    instructions: f64 = 0,
-    ipc: f64 = 0,
-    cache_misses: f64 = 0,
+    cycles: ?f64 = null,
+    instructions: ?f64 = null,
+    ipc: ?f64 = null,
+    cache_misses: ?f64 = null,
 };
 
 pub const Options = struct {
@@ -89,36 +89,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
     else
         0;
 
-    var cycles: f64 = 0;
-    var instructions: f64 = 0;
-    var cache_misses: f64 = 0;
-    var ipc: f64 = 0;
-
-    if (builtin.os.tag == .linux) {
-        var perf = try Perf.init();
-        defer perf.deinit();
-
-        try perf.capture();
-        for (0..options.sample_size) |_| {
-            std.mem.doNotOptimizeAway(function);
-            try function();
-        }
-        try perf.stop();
-
-        const m = perf.read();
-
-        // Average over the sample size using floating point division
-        const sample_f = @as(f64, @floatFromInt(options.sample_size));
-        cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
-        instructions = @as(f64, @floatFromInt(m.instructions)) / sample_f;
-        cache_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
-
-        if (cycles > 0) {
-            ipc = instructions / cycles;
-        }
-    }
-
-    return Metrics{
+    var metrics = Metrics{
         .name = name,
         .min_ns = samples[0],
         .max_ns = samples[samples.len - 1],
@@ -128,11 +99,37 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
         .samples = options.sample_size,
         .ops_sec = ops_sec,
         .mb_sec = mb_sec,
-        .cycles = cycles,
-        .instructions = instructions,
-        .ipc = ipc,
-        .cache_misses = cache_misses,
     };
+
+    if (builtin.os.tag == .linux) {
+        if (Perf.init()) |p| {
+            var perf = p;
+            defer perf.deinit();
+
+            try perf.capture();
+            for (0..options.sample_size) |_| {
+                std.mem.doNotOptimizeAway(function);
+                try function();
+            }
+            try perf.stop();
+
+            const m = try perf.read();
+
+            const sample_f = @as(f64, @floatFromInt(options.sample_size));
+            const avg_cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
+            const avg_instr = @as(f64, @floatFromInt(m.instructions)) / sample_f;
+            const avg_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
+
+            metrics.cycles = avg_cycles;
+            metrics.instructions = avg_instr;
+            metrics.cache_misses = avg_misses;
+            if (avg_cycles > 0) {
+                metrics.ipc = avg_instr / avg_cycles;
+            }
+        } else |_| {} // skip counter if we can't open use it
+    }
+
+    return metrics;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -214,26 +211,30 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
         }
         try writer.writeByte('\n');
 
-        // --- ROW 2: Low Level (Hardware) ---
         // Only printed if we have hardware stats
-        if (m.instructions > 0) {
+        if (m.cycles) |cycles| {
             const sub_tree_prefix = if (is_last_item) "   └─ " else "│  └─ ";
             try writer.writeAll(sub_tree_prefix);
-
             try writeColor(writer, .dim, "cycles: ");
-            try fmtInt(writer, m.cycles);
+            try fmtInt(writer, cycles);
+        }
 
+        if (m.instructions) |instructions| {
             try writer.writeAll("\t");
             try writeColor(writer, .dim, "instructions: ");
-            try fmtInt(writer, m.instructions);
+            try fmtInt(writer, instructions);
+        }
 
+        if (m.ipc) |ipc| {
             try writer.writeAll("\t");
             try writeColor(writer, .dim, "ipc: ");
-            try writer.print("{d:.2}", .{m.ipc});
+            try writer.print("{d:.2}", .{ipc});
+        }
 
+        if (m.cache_misses) |cache_missess| {
             try writer.writeAll("\t");
             try writeColor(writer, .dim, "miss: ");
-            try fmtInt(writer, m.cache_misses);
+            try fmtInt(writer, cache_missess);
 
             try writer.writeByte('\n');
         }
