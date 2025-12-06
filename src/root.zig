@@ -89,10 +89,17 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
     else
         0;
 
-    var cycles: f64 = 0;
-    var instructions: f64 = 0;
-    var cache_misses: f64 = 0;
-    var ipc: f64 = 0;
+    var metrics = Metrics{
+        .name = name,
+        .min_ns = samples[0],
+        .max_ns = samples[samples.len - 1],
+        .mean_ns = mean,
+        .median_ns = samples[options.sample_size / 2],
+        .std_dev_ns = math.sqrt(variance),
+        .samples = options.sample_size,
+        .ops_sec = ops_sec,
+        .mb_sec = mb_sec,
+    };
 
     if (builtin.os.tag == .linux) {
         if (Perf.init()) |p| {
@@ -109,31 +116,20 @@ pub fn run(allocator: Allocator, name: []const u8, function: VoidFn, options: Op
             const m = try perf.read();
 
             const sample_f = @as(f64, @floatFromInt(options.sample_size));
-            cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
-            instructions = @as(f64, @floatFromInt(m.instructions)) / sample_f;
-            cache_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
+            const avg_cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
+            const avg_instr = @as(f64, @floatFromInt(m.instructions)) / sample_f;
+            const avg_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
 
-            if (cycles > 0) {
-                ipc = instructions / cycles;
+            metrics.cycles = avg_cycles;
+            metrics.instructions = avg_instr;
+            metrics.cache_misses = avg_misses;
+            if (avg_cycles > 0) {
+                metrics.ipc = avg_instr / avg_cycles;
             }
         } else |_| {} // skip counter if we can't open use it
     }
 
-    return Metrics{
-        .name = name,
-        .min_ns = samples[0],
-        .max_ns = samples[samples.len - 1],
-        .mean_ns = mean,
-        .median_ns = samples[options.sample_size / 2],
-        .std_dev_ns = math.sqrt(variance),
-        .samples = options.sample_size,
-        .ops_sec = ops_sec,
-        .mb_sec = mb_sec,
-        .cycles = cycles,
-        .instructions = instructions,
-        .ipc = ipc,
-        .cache_misses = cache_misses,
-    };
+    return metrics;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
