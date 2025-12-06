@@ -6,6 +6,8 @@ Tiny benchmarking library for Zig.
 
 - **CPU Counters**: Measures CPU cycles, instructions, IPC, and cache misses
   directly from the kernel (Linux only).
+- **Argument Support**: Pass pre-calculated data to your functions to separate
+  setup overhead from the benchmark loop.
 - **Baseline Comparison**: Easily compare multiple implementations against a
   reference function to see relative speedups or regressions.
 - **Flexible Reporting**: Access raw metric data programmatically to generate
@@ -50,6 +52,19 @@ pointer to `run`.
 ```zig
 const res = try bench.run(allocator, "My Function", myFn, .{});
 try bench.report({ .metrics = &.{res} });
+```
+
+### Run with Arguments
+
+You can generate test data before the benchmark starts and pass it via a tuple.
+This ensures the setup cost doesn't pollute your measurements.
+
+```zig
+// Setup data outside the benchmark
+const input = try generateLargeString(allocator, 10_000);
+
+// Pass input as a tuple
+const res = try bench.run(allocator, "Parser", parseFn, .{input}, .{});
 ```
 
 ### Comparing Implementations
