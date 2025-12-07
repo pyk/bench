@@ -187,3 +187,31 @@ test "accuracy: adaptive batching precision" {
         return error.BatchingFailed;
     }
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// Supported function's return signature
+
+fn functionReturnVoid() void {
+    _ = 1;
+}
+
+fn functionReturnVoidError() !void {
+    _ = 1;
+}
+
+fn functionReturnValue() u64 {
+    return 1;
+}
+
+fn functionReturnValueError() !u64 {
+    return 1;
+}
+
+test "run: suppported signatures" {
+    const allocator = testing.allocator;
+
+    _ = try bench.run(allocator, "functionReturnVoid", functionReturnVoid, .{}, .{});
+    _ = try bench.run(allocator, "functionReturnVoidError", functionReturnVoidError, .{}, .{});
+    _ = try bench.run(allocator, "functionReturnValue", functionReturnValue, .{}, .{});
+    _ = try bench.run(allocator, "functionReturnValueError", functionReturnValueError, .{}, .{});
+}
