@@ -131,13 +131,15 @@ The default `bench.report` prints a human-readable table to stdout. It handles
 units (ns, us, ms, s) and coloring automatically.
 
 ```sh
+$ zig build quicksort
+Benchmarking Sorting Algorithms Against Random Input (N=10000)...
 Benchmark Summary: 3 benchmarks run
-├─ NoOp        60ns      16.80M/s   [baseline]
-│  └─ cycles: 14        instructions: 36        ipc: 2.51       miss: 0
-├─ Sleep     1.06ms         944/s   17648.20x slower
-│  └─ cycles: 4.1k      instructions: 2.9k      ipc: 0.72       miss: 17
-└─ Busy     32.38us      30.78K/s   539.68x slower
-   └─ cycles: 150.1k    instructions: 700.1k    ipc: 4.67       miss: 0
+├─ Unsafe Quicksort (Lomuto)   358.64us    110.98MB/s   1.29x faster
+│  └─ cycles: 1.6M      instructions: 1.2M      ipc: 0.75       miss: 65
+├─ Unsafe Quicksort (Hoare)    383.02us    104.32MB/s   1.21x faster
+│  └─ cycles: 1.7M      instructions: 1.3M      ipc: 0.76       miss: 56
+└─ std.mem.sort                462.25us     86.45MB/s   [baseline]
+   └─ cycles: 2.0M      instructions: 2.6M      ipc: 1.30       miss: 143
 ```
 
 ### Custom Reporter
