@@ -2,7 +2,7 @@
   <a href="https://pyk.sh">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pyk/bench/blob/main/.github/logo-dark.png">
-      <img alt="pyk/bench logo" src="https://github.com/pyk/bench/blob/main/.github/logo-light.png" width="auto" height="90">
+      <img alt="pyk/bench logo" src="https://github.com/pyk/bench/blob/main/.github/logo-light.png">
     </picture>
   </a>
 </p>
