@@ -1,6 +1,22 @@
-# bench
+<p align="center">
+  <a href="https://pyk.sh">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pyk/bench/blob/main/.github/logo-dark.png">
+      <img alt="pyk/bench logo" src="https://github.com/pyk/bench/blob/main/.github/logo-light.png" width="auto" height="90">
+    </picture>
+  </a>
+</p>
 
-Tiny benchmarking library for Zig.
+<p align="center">
+  Fast & Accurate Benchmarking for Zig
+<p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/zig-0.16.0--dev-x?style=flat&labelColor=00f&color=fff&style=flat&logo=zig&logoColor=fff" alt="Zig Version">
+  <img src="https://img.shields.io/badge/version-alpha-x?style=flat&labelColor=00f&color=fff&style=flat" alt="Alpha lib">
+  <img src="https://img.shields.io/github/check-runs/pyk/bench/main?colorA=00f&colorB=fff&style=flat&logo=github" alt="CI Runs">
+  <img src="https://img.shields.io/github/license/pyk/bench?colorA=00f&colorB=fff&style=flat" alt="MIT License">
+</p>
 
 ## Features
 
