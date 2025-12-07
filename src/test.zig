@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const testing = std.testing;
 
@@ -149,4 +150,40 @@ test "run: with args" {
 
     // The fake SIMD should be faster because it increments by 4
     try testing.expect(m_simd.median_ns < m_naive.median_ns);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// accuracy test
+
+fn fastIncrement(val: *u64) !void {
+    val.* +%= 1;
+    std.mem.doNotOptimizeAway(val.*);
+}
+
+test "accuracy: adaptive batching precision" {
+    const allocator = testing.allocator;
+    var x: u64 = 0;
+
+    // Run the benchmark on a sub-nanosecond operation
+    const metrics = try bench.run(allocator, "FastInc", fastIncrement, .{&x}, .{
+        .warmup_iters = 100,
+        .sample_size = 1000,
+    });
+
+    // Sanity check: It must take some time
+    try testing.expect(metrics.median_ns > 0.0);
+
+    // If batching is broken, this will measure the OS timer overhead.
+    // In Release mode: Function call overhead is ~1ns, Timer is ~20ns. Check for < 10ns.
+    // In Debug mode: Function call overhead is ~10-20ns. Timer is ~20ns.
+    //                We relax the check to < 50ns to pass in standard 'zig build test'.
+    const threshold = if (builtin.mode == .Debug) 50.0 else 10.0;
+
+    if (metrics.median_ns >= threshold) {
+        std.debug.print(
+            "\nFAIL: Operation took {d:.2}ns (Mode: {s}), which exceeds threshold of {d:.2}ns.\n",
+            .{ metrics.median_ns, @tagName(builtin.mode), threshold },
+        );
+        return error.BatchingFailed;
+    }
 }

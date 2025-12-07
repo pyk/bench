@@ -23,6 +23,27 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&mod_test_run.step);
 
     ///////////////////////////////////////////////////////////////////////////
+    // zig build quicksort
+
+    const quicksort_step = b.step("quicksort", "Run quicksort benchmark");
+    const quicksort_exe = b.addExecutable(.{
+        .name = "quicksort-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/quicksort.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{
+                .{
+                    .name = "bench",
+                    .module = mod,
+                },
+            },
+        }),
+    });
+    const quicksort_run = b.addRunArtifact(quicksort_exe);
+    quicksort_step.dependOn(&quicksort_run.step);
+
+    ///////////////////////////////////////////////////////////////////////////
     // zig build repomix - Pack repository using repomix
 
     var threaded: std.Io.Threaded = .init(b.allocator);
