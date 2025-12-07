@@ -13,10 +13,10 @@ const Perf = @import("Perf.zig");
 pub const Metrics = struct {
     name: []const u8,
     // Time
-    min_ns: u64,
-    max_ns: u64,
+    min_ns: f64,
+    max_ns: f64,
     mean_ns: f64,
-    median_ns: u64,
+    median_ns: f64,
     std_dev_ns: f64,
     // Throughput
     samples: usize,
@@ -46,36 +46,67 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
     assertFunctionDef(function, args);
 
     for (0..options.warmup_iters) |_| {
-        std.mem.doNotOptimizeAway(function);
         std.mem.doNotOptimizeAway(args);
         try @call(.auto, function, args);
     }
 
-    const samples = try allocator.alloc(u64, options.sample_size);
-    defer allocator.free(samples);
-
+    // We need to determine a batch_size such that the total execution time of the batch
+    // is large enough to minimize timer resolution noise.
+    // Target: 1ms (1,000,000 ns) per measurement block.
+    const min_sample_time_ns = 1_000_000;
+    var batch_size: u64 = 1;
     var timer = try Timer.start();
+
+    while (true) {
+        timer.reset();
+        for (0..batch_size) |_| {
+            std.mem.doNotOptimizeAway(args);
+            try @call(.auto, function, args);
+        }
+        const duration = timer.read();
+
+        if (duration >= min_sample_time_ns) break;
+
+        // If the duration is 0 (too fast to measure) or small, scale up
+        if (duration == 0) {
+            batch_size *= 10;
+        } else {
+            const ratio = @as(f64, @floatFromInt(min_sample_time_ns)) / @as(f64, @floatFromInt(duration));
+            const multiplier = @as(u64, @intFromFloat(std.math.ceil(ratio)));
+            if (multiplier <= 1) {
+                batch_size *= 2; // Fallback growth
+            } else {
+                batch_size *= multiplier;
+            }
+        }
+    }
+
+    const samples = try allocator.alloc(f64, options.sample_size);
+    defer allocator.free(samples);
 
     for (0..options.sample_size) |i| {
         timer.reset();
-        std.mem.doNotOptimizeAway(function);
-        std.mem.doNotOptimizeAway(args);
-        try @call(.auto, function, args);
-        samples[i] = timer.read();
+        for (0..batch_size) |_| {
+            std.mem.doNotOptimizeAway(args);
+            try @call(.auto, function, args);
+        }
+        const total_ns = timer.read();
+        // Average time per operation for this batch
+        samples[i] = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(batch_size));
     }
 
     // Sort samples to find the median and process min/max
-    sort.block(u64, samples, {}, sort.asc(u64));
+    sort.block(f64, samples, {}, sort.asc(f64));
 
-    var sum: u128 = 0;
+    var sum: f64 = 0;
     for (samples) |s| sum += s;
 
-    const mean = @as(f64, @floatFromInt(sum)) / @as(f64, @floatFromInt(options.sample_size));
+    const mean = sum / @as(f64, @floatFromInt(options.sample_size));
 
     // Calculate Variance for Standard Deviation
     var sum_sq_diff: f64 = 0;
     for (samples) |s| {
-        const diff = @as(f64, @floatFromInt(s)) - mean;
+        const diff = s - mean;
         sum_sq_diff += diff * diff;
     }
     const variance = sum_sq_diff / @as(f64, @floatFromInt(options.sample_size));
@@ -109,18 +140,18 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
 
             try perf.capture();
             for (0..options.sample_size) |_| {
-                std.mem.doNotOptimizeAway(function);
-                std.mem.doNotOptimizeAway(args);
-                try @call(.auto, function, args);
+                for (0..batch_size) |_| {
+                    std.mem.doNotOptimizeAway(args);
+                    try @call(.auto, function, args);
+                }
             }
             try perf.stop();
 
             const m = try perf.read();
-
-            const sample_f = @as(f64, @floatFromInt(options.sample_size));
-            const avg_cycles = @as(f64, @floatFromInt(m.cycles)) / sample_f;
-            const avg_instr = @as(f64, @floatFromInt(m.instructions)) / sample_f;
-            const avg_misses = @as(f64, @floatFromInt(m.cache_misses)) / sample_f;
+            const total_ops = @as(f64, @floatFromInt(options.sample_size * batch_size));
+            const avg_cycles = @as(f64, @floatFromInt(m.cycles)) / total_ops;
+            const avg_instr = @as(f64, @floatFromInt(m.instructions)) / total_ops;
+            const avg_misses = @as(f64, @floatFromInt(m.cache_misses)) / total_ops;
 
             metrics.cycles = avg_cycles;
             metrics.instructions = avg_instr;
@@ -128,7 +159,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
             if (avg_cycles > 0) {
                 metrics.ipc = avg_instr / avg_cycles;
             }
-        } else |_| {} // skip counter if we can't open use it
+        } else |_| {} // skip counter if we can't open it
     }
 
     return metrics;
@@ -205,7 +236,7 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
         const padding = max_name_len - m.name.len + 2;
         _ = try writer.splatByte(' ', padding);
 
-        try fmtTime(writer, @as(f64, @floatFromInt(m.median_ns)));
+        try fmtTime(writer, m.median_ns);
         try writer.writeAll("   ");
 
         if (m.mb_sec > 0.001) {
@@ -221,8 +252,8 @@ pub fn writeReport(writer: *Writer, options: ReportOptions) !void {
                 try writeColor(writer, .blue, "[baseline]");
             } else if (base_idx < options.metrics.len) {
                 const base = options.metrics[base_idx];
-                const base_f = @as(f64, @floatFromInt(base.median_ns));
-                const curr_f = @as(f64, @floatFromInt(m.median_ns));
+                const base_f = base.median_ns;
+                const curr_f = m.median_ns;
 
                 if (curr_f > 0 and base_f > 0) {
                     if (curr_f < base_f) {
@@ -277,6 +308,7 @@ pub fn report(options: ReportOptions) !void {
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout = &stdout_writer.interface;
     try writeReport(stdout, options);
+    try stdout.flush();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -299,7 +331,7 @@ fn fmtTime(writer: *Writer, ns: f64) !void {
     var slice: []u8 = undefined;
 
     if (ns < 1000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.0}ns", .{ns});
+        slice = try std.fmt.bufPrint(&buf, "{d:.2}ns", .{ns});
     } else if (ns < 1_000_000) {
         slice = try std.fmt.bufPrint(&buf, "{d:.2}us", .{ns / 1000.0});
     } else if (ns < 1_000_000_000) {
