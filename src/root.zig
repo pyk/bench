@@ -22,7 +22,7 @@ pub const Metrics = struct {
     samples: usize,
     ops_sec: f64,
     mb_sec: f64,
-    // Hardware (Linux only, 0 otherwise)
+    // Hardware (Linux only, null otherwise)
     cycles: ?f64 = null,
     instructions: ?f64 = null,
     ipc: ?f64 = null,
@@ -196,7 +196,7 @@ fn assertFunctionDef(function: anytype, args: anytype) void {
 ////////////////////////////////////////////////////////////////////////////////
 // reporters
 
-fn writeColor(writer: anytype, color: tty.Color, text: []const u8) !void {
+fn writeColor(writer: *Writer, color: tty.Color, text: []const u8) !void {
     const config = tty.Config.detect(std.fs.File.stdout());
     if (config != .no_color) {
         switch (color) {
