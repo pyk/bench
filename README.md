@@ -43,7 +43,36 @@ Fetch latest version:
 zig fetch --save=bench https://github.com/pyk/bench/archive/main.tar.gz
 ```
 
-Add `bench` as a dependency to your `build.zig`.
+Then add this to your `build.zig`:
+
+```zig
+const bench = b.dependency("bench", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+// Use it on a module
+const mod = b.createModule(.{
+    .target = target,
+    .optimize = optimize,
+    .imports = &.{
+        .{ .name = "bench", .module = bench.module("bench") },
+    },
+});
+
+// Or executable
+const my_bench = b.addExecutable(.{
+    .name = "my-bench",
+    .root_module = b.createModule(.{
+        .root_source_file = b.path("bench/my-bench.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .imports = &.{
+            .{ .name = "bench", .module = bench.module("bench") },
+        },
+    }),
+});
+```
 
 If you are using it only for tests/benchmarks, it is recommended to mark it as
 lazy:
