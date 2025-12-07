@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://pyk.sh">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pyk/bench/blob/main/.github/logo-dark.png">
-      <img alt="pyk/bench logo" src="https://github.com/pyk/bench/blob/main/.github/logo-light.png">
+      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/pyk/bench/blob/main/.github/logo-dark.svg">
+      <img alt="pyk/bench logo" src="https://github.com/pyk/bench/blob/main/.github/logo-light.svg">
     </picture>
   </a>
 </p>
