@@ -47,7 +47,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
 
     for (0..options.warmup_iters) |_| {
         std.mem.doNotOptimizeAway(args);
-        try @call(.auto, function, args);
+        try execute(function, args);
     }
 
     // We need to determine a batch_size such that the total execution time of the batch
@@ -61,7 +61,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
         timer.reset();
         for (0..batch_size) |_| {
             std.mem.doNotOptimizeAway(args);
-            try @call(.auto, function, args);
+            try execute(function, args);
         }
         const duration = timer.read();
 
@@ -88,7 +88,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
         timer.reset();
         for (0..batch_size) |_| {
             std.mem.doNotOptimizeAway(args);
-            try @call(.auto, function, args);
+            try execute(function, args);
         }
         const total_ns = timer.read();
         // Average time per operation for this batch
@@ -142,7 +142,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
             for (0..options.sample_size) |_| {
                 for (0..batch_size) |_| {
                     std.mem.doNotOptimizeAway(args);
-                    try @call(.auto, function, args);
+                    try execute(function, args);
                 }
             }
             try perf.stop();
@@ -190,6 +190,22 @@ fn assertFunctionDef(function: anytype, args: anytype) void {
             "Function expects {d} arguments, but args tuple has {d}",
             .{ fn_info.@"fn".params.len, args_info.@"struct".fields.len },
         ));
+    }
+}
+
+inline fn execute(function: anytype, args: anytype) !void {
+    const FnType = @TypeOf(function);
+    const UnwrappedFnType = if (@typeInfo(FnType) == .pointer)
+        @typeInfo(FnType).pointer.child
+    else
+        FnType;
+    const return_type = @typeInfo(UnwrappedFnType).@"fn".return_type.?;
+    if (@typeInfo(return_type) == .error_union) {
+        const result = try @call(.auto, function, args);
+        std.mem.doNotOptimizeAway(result);
+    } else {
+        const result = @call(.auto, function, args);
+        std.mem.doNotOptimizeAway(result);
     }
 }
 
