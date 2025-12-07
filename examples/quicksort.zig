@@ -58,7 +58,6 @@ fn quickSortHoare(arr: []i32, low: isize, high: isize) void {
     if (low < high) {
         const p_idx = partitionHoare(arr, @intCast(low), @intCast(high));
         quickSortHoare(arr, low, @intCast(p_idx));
-        // FIX: Cast p_idx to isize BEFORE adding 1
         quickSortHoare(arr, @as(isize, @intCast(p_idx)) + 1, high);
     }
 }
@@ -114,7 +113,6 @@ pub fn main() !void {
     const opts = bench.Options{
         .sample_size = 100,
         .warmup_iters = 20,
-        // Throughput: treating 'size' bytes as the workload gives us MB/s
         .bytes_per_op = size * @sizeOf(i32),
     };
 
@@ -122,7 +120,6 @@ pub fn main() !void {
     const m_hoare = try bench.run(allocator, "Unsafe Quicksort (Hoare)", runHoare, .{ allocator, input }, opts);
     const m_std = try bench.run(allocator, "std.mem.sort", runStdSort, .{ allocator, input }, opts);
 
-    // Report
     // We use std.mem.sort as the baseline (index 2)
     try bench.report(.{
         .metrics = &.{ m_lomuto, m_hoare, m_std },
