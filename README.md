@@ -96,7 +96,7 @@ pointer to `run`.
 
 ```zig
 const res = try bench.run(allocator, "My Function", myFn, .{});
-try bench.report({ .metrics = &.{res} });
+try bench.report(.{ .metrics = &.{res} });
 ```
 
 ### Run with Arguments
@@ -189,34 +189,27 @@ std.debug.print("Median: {d}ns, Max: {d}ns\n", .{
 
 ## Supported Metrics
 
-This tiny benchmark library support (✅) various metrics:
+The `run` function returns a `Metrics` struct containing the following data
+points:
 
-| Category    | Metric                       | Description                                                  |
-| ----------- | ---------------------------- | ------------------------------------------------------------ |
-| Time        | ✅ Mean / Average            | Arithmetic average of all runs                               |
-| Time        | ✅ Median                    | The middle value (less sensitive to outliers)                |
-| Time        | ✅ Min / Max                 | The absolute fastest and slowest runs                        |
-| Time        | CPU vs Wall Time             | CPU time (active processing) vs Wall time (real world)       |
-| Throughput  | ✅ Ops/sec                   | Operations per second                                        |
-| Throughput  | ✅ Bytes/sec                 | Data throughput (MB/s, GB/s)                                 |
-| Throughput  | Items/sec                    | Discrete items processed per second                          |
-| Latency     | Percentiles                  | p75, p99, p99.9. (e.g. "99% of requests were faster than X") |
-| Latency     | ✅ Std Dev / Variance        | How much the results deviate from the average                |
-| Latency     | Outliers                     | Detecting and reporting anomaly runs                         |
-| Latency     | Confidence / Margin of Error | e.g. "± 2.5%"                                                |
-| Latency     | Histogram                    | Visual distribution of all runs                              |
-| Memory      | Bytes Allocated              | Total heap memory requested per iteration                    |
-| Memory      | Allocation Count             | Number of allocation calls                                   |
-| CPU         | ✅ Cycles                    | CPU clock cycles used                                        |
-| CPU         | ✅ Instructions              | Total CPU instructions executed                              |
-| CPU         | ✅ IPC                       | Instructions Per Cycle (Efficiency)                          |
-| CPU         | ✅ Cache Misses              | L1/L2 Cache misses                                           |
-| Comparative | ✅ Speedup (x)               | "12.5x faster" (Current / Baseline).                         |
-| Comparative | Relative Diff (%)            | "+ 50%" or "- 10%".                                          |
-| Comparative | Big O                        | Complexity Analysis (O(n), O(log n)).                        |
-| Comparative | R² (Goodness of Fit)         | How well the data fits a linear model.                       |
+| Category   | Metric         | Description                                                |
+| ---------- | -------------- | ---------------------------------------------------------- |
+| Meta       | `name`         | The identifier string for the benchmark.                   |
+| Time       | `min_ns`       | Minimum execution time per operation (nanoseconds).        |
+| Time       | `max_ns`       | Maximum execution time per operation (nanoseconds).        |
+| Time       | `mean_ns`      | Arithmetic mean execution time (nanoseconds).              |
+| Time       | `median_ns`    | Median execution time (nanoseconds).                       |
+| Time       | `std_dev_ns`   | Standard deviation of the execution time.                  |
+| Meta       | `samples`      | Total number of measurement samples collected.             |
+| Throughput | `ops_sec`      | Calculated operations per second.                          |
+| Throughput | `mb_sec`       | Data throughput in MB/s (populated if `bytes_per_op` > 0). |
+| Hardware\* | `cycles`       | Average CPU cycles per operation.                          |
+| Hardware\* | `instructions` | Average CPU instructions executed per operation.           |
+| Hardware\* | `ipc`          | Instructions Per Cycle (efficiency ratio).                 |
+| Hardware\* | `cache_misses` | Average cache misses per operation.                        |
 
-Other metrics will be added as needed. Feel free to send a pull request.
+_\*Hardware metrics are currently available on Linux only. They will be `null`
+on other platforms or if permissions are restricted._
 
 ## Notes
 
@@ -245,7 +238,6 @@ Other metrics will be added as needed. Feel free to send a pull request.
 - [Hejsil/zig-bench](https://github.com/Hejsil/zig-bench)
 - [briangold/metron](https://github.com/briangold/metron)
 - [dweiller/zubench](https://github.com/dweiller/zubench)
-- [briangold/metron](https://github.com/briangold/metron)
 
 ## Development
 
@@ -272,7 +264,7 @@ Enable/disable `kernel.perf_event_paranoid` for debugging:
 
 ```sh
 # Disable
-sudo sysctl -w kernel.perf_event_paranoid=3
+sudo sysctl -w kernel.perf_event_paranoid=2
 
 # Enable
 sudo sysctl -w kernel.perf_event_paranoid=-1
@@ -280,7 +272,7 @@ sudo sysctl -w kernel.perf_event_paranoid=-1
 
 ## Devlog
 
-- [bench: Fixing Microbenchmark Accuracy](https://pyk.sh/blog/2025-12-07-bench-fixing-microbenchmark-accuracy-in-zig)
+- [Fixing Microbenchmark Accuracy](https://pyk.sh/blog/2025-12-07-bench-fixing-microbenchmark-accuracy-in-zig)
 
 ## License
 
