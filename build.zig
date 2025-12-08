@@ -43,6 +43,26 @@ pub fn build(b: *std.Build) void {
     const quicksort_run = b.addRunArtifact(quicksort_exe);
     quicksort_step.dependOn(&quicksort_run.step);
 
+    const fibonacci_step = b.step("fibonacci", "Run fibonacci benchmark");
+    const fibonacci_exe = b.addExecutable(.{
+        .name = "fibonacci-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/fibonacci.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{
+                .{
+                    .name = "bench",
+                    .module = mod,
+                },
+            },
+        }),
+    });
+    const fibonacci_install = b.addInstallArtifact(fibonacci_exe, .{});
+    const fibonacci_run = b.addRunArtifact(fibonacci_exe);
+    fibonacci_step.dependOn(&fibonacci_install.step);
+    fibonacci_step.dependOn(&fibonacci_run.step);
+
     ///////////////////////////////////////////////////////////////////////////
     // zig build repomix - Pack repository using repomix
 
