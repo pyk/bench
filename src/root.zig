@@ -47,10 +47,10 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
 
     // ref: https://pyk.sh/blog/2025-12-08-bench-fixing-constant-folding
     var runtime_args = createRuntimeArgs(function, args);
-    const volatile_args_ptr: *volatile @TypeOf(runtime_args) = &runtime_args;
+    std.mem.doNotOptimizeAway(&runtime_args);
 
     for (0..options.warmup_iters) |_| {
-        try execute(function, volatile_args_ptr.*);
+        try execute(function, runtime_args);
     }
 
     // We need to determine a batch_size such that the total execution time of the batch
@@ -63,7 +63,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
     while (true) {
         timer.reset();
         for (0..batch_size) |_| {
-            try execute(function, volatile_args_ptr.*);
+            try execute(function, runtime_args);
         }
         const duration = timer.read();
 
@@ -89,7 +89,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
     for (0..options.sample_size) |i| {
         timer.reset();
         for (0..batch_size) |_| {
-            try execute(function, volatile_args_ptr.*);
+            try execute(function, runtime_args);
         }
         const total_ns = timer.read();
         // Average time per operation for this batch
@@ -142,7 +142,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
             try perf.capture();
             for (0..options.sample_size) |_| {
                 for (0..batch_size) |_| {
-                    try execute(function, volatile_args_ptr.*);
+                    try execute(function, runtime_args);
                 }
             }
             try perf.stop();
@@ -168,6 +168,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
 inline fn execute(function: anytype, args: anytype) !void {
     const FnType = unwrapFnType(@TypeOf(function));
     const return_type = @typeInfo(FnType).@"fn".return_type.?;
+
     // Conditional execution based on whether the function can fail
     if (@typeInfo(return_type) == .error_union) {
         const result = try @call(.auto, function, args);
