@@ -2,7 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const testing = std.testing;
 
-const bench = @import("root.zig");
+const Runner = @import("Runner.zig");
 
 fn noOp() !void {
     // Pure overhead measurement
@@ -25,18 +25,9 @@ fn sleepWork() !void {
     std.mem.doNotOptimizeAway(io);
 }
 
-// Global buffer for memory test
-var src_buf: [16 * 1024]u8 = undefined;
-var dst_buf: [16 * 1024]u8 = undefined;
-
-fn copyWork() !void {
-    @memcpy(&dst_buf, &src_buf);
-    std.mem.doNotOptimizeAway(dst_buf);
-}
-
-test "run: basic check" {
+test "basic metrics" {
     const allocator = testing.allocator;
-    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{}, .{});
+    const noop_metrics = try Runner.run(allocator, "NoOp", noOp, .{}, .{});
 
     // The minimum cannot be larger than the maximum
     try testing.expect(noop_metrics.min_ns <= noop_metrics.max_ns);
@@ -48,7 +39,7 @@ test "run: basic check" {
     // Execution must take some time (non-zero)
     try testing.expect(noop_metrics.min_ns > 0);
 
-    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{}, .{});
+    const busy_metrics = try Runner.run(allocator, "Busy", busyWork, .{}, .{});
 
     // The busy function MUST be slower than the no-op
     try testing.expect(busy_metrics.median_ns > noop_metrics.median_ns);
@@ -58,60 +49,15 @@ test "run: basic check" {
     // not just the overhead of the tool itself.
     try testing.expect(busy_metrics.median_ns > (noop_metrics.median_ns * 2));
 
-    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{}, .{});
+    const sleep_metrics = try Runner.run(allocator, "Sleep", sleepWork, .{}, .{});
     const target_ns = 1 * std.time.ns_per_ms;
 
     // We check if the result is reasonably close to 1ms.
     // Note: OS Sleep is imprecise. It will always be >= target, never less.
-    // We allow a "scheduler noise" overhead (e.g., +2ms tolerance for CI environments).
     try testing.expect(sleep_metrics.median_ns >= target_ns);
 
     const tolerance = 2 * std.time.ns_per_ms;
     try testing.expect(sleep_metrics.median_ns < (target_ns + tolerance));
-}
-
-test "run: bandwidth check" {
-    const allocator = testing.allocator;
-    @memset(&src_buf, 0xAA);
-    const metrics = try bench.run(allocator, "Copy", copyWork, .{}, .{
-        .sample_size = 1000,
-        .bytes_per_op = src_buf.len,
-    });
-
-    try testing.expect(metrics.mb_sec > 0);
-    try testing.expect(metrics.mb_sec > 1.0); // Sanity check
-}
-
-test "report: output" {
-    const allocator = testing.allocator;
-    @memset(&src_buf, 0xAA);
-    const copy_metrics = try bench.run(allocator, "Copy", copyWork, .{}, .{
-        .sample_size = 1000,
-        .bytes_per_op = src_buf.len,
-    });
-
-    const noop_metrics = try bench.run(allocator, "NoOp", noOp, .{}, .{});
-    const sleep_metrics = try bench.run(allocator, "Sleep", sleepWork, .{}, .{});
-    const busy_metrics = try bench.run(allocator, "Busy", busyWork, .{}, .{});
-
-    var single: std.Io.Writer.Allocating = .init(allocator);
-    defer single.deinit();
-    try bench.writeReport(&single.writer, .{ .metrics = &.{copy_metrics} });
-
-    var double: std.Io.Writer.Allocating = .init(allocator);
-    defer double.deinit();
-    try bench.writeReport(&double.writer, .{ .metrics = &.{ noop_metrics, sleep_metrics } });
-
-    var baseline: std.Io.Writer.Allocating = .init(allocator);
-    defer baseline.deinit();
-    try bench.writeReport(&baseline.writer, .{
-        .metrics = &.{ noop_metrics, sleep_metrics, busy_metrics },
-        .baseline_index = 0,
-    });
-
-    std.debug.print("\nsingle:\n{s}\n", .{single.written()});
-    std.debug.print("\ndouble:\n{s}\n", .{double.written()});
-    std.debug.print("\nbaseline:\n{s}\n", .{baseline.written()});
 }
 
 // Simulate a whitespace skipper function
@@ -132,7 +78,7 @@ fn skipWhitespaceSIMD(input: []const u8) !void {
     std.mem.doNotOptimizeAway(i);
 }
 
-test "run: with args" {
+test "run with args" {
     const allocator = testing.allocator;
 
     // Generate test data outside the benchmark
@@ -142,8 +88,8 @@ test "run: with args" {
     @memset(input, ' ');
     input[len - 1] = 'x'; // Stop at the end
 
-    const m_naive = try bench.run(allocator, "Naive", skipWhitespaceNaive, .{input}, .{ .sample_size = 100 });
-    const m_simd = try bench.run(allocator, "SIMD", skipWhitespaceSIMD, .{input}, .{ .sample_size = 100 });
+    const m_naive = try Runner.run(allocator, "Naive", skipWhitespaceNaive, .{input}, .{ .sample_size = 100 });
+    const m_simd = try Runner.run(allocator, "SIMD", skipWhitespaceSIMD, .{input}, .{ .sample_size = 100 });
 
     try testing.expect(m_naive.median_ns > 0);
     try testing.expect(m_simd.median_ns > 0);
@@ -152,20 +98,38 @@ test "run: with args" {
     try testing.expect(m_simd.median_ns < m_naive.median_ns);
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// accuracy test
+// Global buffer for memory test
+var src_buf: [16 * 1024]u8 = undefined;
+var dst_buf: [16 * 1024]u8 = undefined;
+
+fn copyWork() !void {
+    @memcpy(&dst_buf, &src_buf);
+    std.mem.doNotOptimizeAway(dst_buf);
+}
+
+test "bandwidth check" {
+    const allocator = testing.allocator;
+    @memset(&src_buf, 0xAA);
+    const metrics = try Runner.run(allocator, "Copy", copyWork, .{}, .{
+        .sample_size = 1000,
+        .bytes_per_op = src_buf.len,
+    });
+
+    try testing.expect(metrics.mb_sec > 0);
+    try testing.expect(metrics.mb_sec > 1.0); // Sanity check
+}
 
 fn fastIncrement(val: *u64) !void {
     val.* +%= 1;
     std.mem.doNotOptimizeAway(val.*);
 }
 
-test "accuracy: adaptive batching precision" {
+test "metrics accuracy" {
     const allocator = testing.allocator;
     var x: u64 = 0;
 
     // Run the benchmark on a sub-nanosecond operation
-    const metrics = try bench.run(allocator, "FastInc", fastIncrement, .{&x}, .{
+    const metrics = try Runner.run(allocator, "FastIncrement", fastIncrement, .{&x}, .{
         .warmup_iters = 100,
         .sample_size = 1000,
     });
@@ -210,10 +174,10 @@ fn functionReturnValueError() !u64 {
 test "run: suppported signatures" {
     const allocator = testing.allocator;
 
-    _ = try bench.run(allocator, "functionReturnVoid", functionReturnVoid, .{}, .{});
-    _ = try bench.run(allocator, "functionReturnVoidError", functionReturnVoidError, .{}, .{});
-    _ = try bench.run(allocator, "functionReturnValue", functionReturnValue, .{}, .{});
-    _ = try bench.run(allocator, "functionReturnValueError", functionReturnValueError, .{}, .{});
+    _ = try Runner.run(allocator, "functionReturnVoid", functionReturnVoid, .{}, .{});
+    _ = try Runner.run(allocator, "functionReturnVoidError", functionReturnVoidError, .{}, .{});
+    _ = try Runner.run(allocator, "functionReturnValue", functionReturnValue, .{}, .{});
+    _ = try Runner.run(allocator, "functionReturnValueError", functionReturnValueError, .{}, .{});
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -239,13 +203,13 @@ fn fibIterative(n: u64) u64 {
 }
 
 test "run: fibonacci" {
-    const allocator = std.heap.smp_allocator;
-    const opts = bench.Options{
+    const allocator = testing.allocator;
+    const opts = Runner.Options{
         .sample_size = 100,
         .warmup_iters = 3,
     };
-    const m_naive = try bench.run(allocator, "fibNaive", fibNaive, .{@as(u64, 30)}, opts);
-    const m_iter = try bench.run(allocator, "fibIterative", fibIterative, .{@as(u64, 30)}, opts);
+    const m_naive = try Runner.run(allocator, "fibNaive", fibNaive, .{@as(u64, 30)}, opts);
+    const m_iter = try Runner.run(allocator, "fibIterative", fibIterative, .{@as(u64, 30)}, opts);
 
     try testing.expect(m_naive.mean_ns > m_iter.mean_ns * 100);
 }
