@@ -274,6 +274,7 @@ sudo sysctl -w kernel.perf_event_paranoid=-1
 
 - [Fixing Microbenchmark Accuracy](https://pyk.sh/blog/2025-12-07-bench-fixing-microbenchmark-accuracy-in-zig)
 - [Fixing Zig benchmark where `std.mem.doNotOptimizeAway` was ignored](https://pyk.sh/blog/2025-12-08-bench-fixing-constant-folding)
+- [Writing a Type-Safe Linux Perf Interface in Zig](https://pyk.sh/blog/2025-12-11-type-safe-linux-perf-event-open-in-zig)
 
 ## License
 
