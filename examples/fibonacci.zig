@@ -8,7 +8,6 @@ fn fibNaive(n: u64) u64 {
 
 fn fibIterative(n: u64) u64 {
     if (n == 0) return 0;
-
     var a: u64 = 0;
     var b: u64 = 1;
     for (2..n + 1) |_| {
@@ -16,7 +15,6 @@ fn fibIterative(n: u64) u64 {
         a = b;
         b = c;
     }
-
     return b;
 }
 
