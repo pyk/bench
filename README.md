@@ -69,7 +69,7 @@ Run it, and you will get the following output in your terminal:
 ```
 
 The benchmark report generates valid Markdown, so you can copy-paste it directly
-into markdown file:
+into a markdown file:
 
 | Benchmark         |    Time |    Speedup | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
 | :---------------- | ------: | ---------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
@@ -93,7 +93,7 @@ into markdown file:
 
 ## Installation
 
-Fetch latest version:
+Fetch the latest version:
 
 ```sh
 zig fetch --save=bench https://github.com/pyk/bench/archive/main.tar.gz
@@ -196,7 +196,7 @@ const res = try bench.run(allocator, "Memcpy 1MB", copyFn, .{
 });
 
 // Report will now show GB/s instead of just Ops/s
-try bench.report({ .metrics = &.{res} });
+try bench.report(.{ .metrics = &.{res} });
 ```
 
 ### Configuration
@@ -314,10 +314,10 @@ zig build
 Enable/disable `kernel.perf_event_paranoid` for debugging:
 
 ```sh
-# Disable
+# Restrict access
 sudo sysctl -w kernel.perf_event_paranoid=2
 
-# Enable
+# Allow access (Required for CPU metrics)
 sudo sysctl -w kernel.perf_event_paranoid=-1
 ```
 
