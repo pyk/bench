@@ -27,7 +27,7 @@ pub fn write(w: *Writer, options: Options) !void {
     // Initialize columns with Header names and default visibility
     var col_name = Column{ .title = "Benchmark", .width = 0, .align_right = false, .active = true };
     var col_time = Column{ .title = "Time", .width = 0, .align_right = true, .active = true };
-    var col_relative = Column{ .title = "Relative", .width = 0, .align_right = true, .active = false };
+    var col_speedup = Column{ .title = "Speedup", .width = 0, .align_right = true, .active = false };
     var col_iter = Column{ .title = "Iterations", .width = 0, .align_right = true, .active = true };
 
     var col_bytes = Column{ .title = "Bytes/s", .width = 0, .align_right = true, .active = false };
@@ -43,14 +43,14 @@ pub fn write(w: *Writer, options: Options) !void {
     // Activate Rel column if baseline_index is valid
     if (options.baseline_index) |idx| {
         if (idx < options.metrics.len) {
-            col_relative.active = true;
+            col_speedup.active = true;
         }
     }
 
     // Check headers first
     col_name.width = col_name.title.len;
     col_time.width = col_time.title.len;
-    col_relative.width = col_relative.title.len;
+    col_speedup.width = col_speedup.title.len;
     // col_cpu.width = col_cpu.title.len;
     col_iter.width = col_iter.title.len;
     col_bytes.width = col_bytes.title.len;
@@ -69,12 +69,12 @@ pub fn write(w: *Writer, options: Options) !void {
         col_time.width = @max(col_time.width, s_time.len);
 
         // Relative
-        if (col_relative.active) {
+        if (col_speedup.active) {
             const base = options.metrics[options.baseline_index.?];
             // Avoid division by zero
-            const ratio = if (base.mean_ns > 0) m.mean_ns / base.mean_ns else 0;
+            const ratio = if (m.mean_ns > 0) base.mean_ns / m.mean_ns else 0;
             const s_rel = try std.fmt.bufPrint(&buf, "{d:.2}x", .{ratio});
-            col_relative.width = @max(col_relative.width, s_rel.len);
+            col_speedup.width = @max(col_speedup.width, s_rel.len);
         }
 
         // Iterations
@@ -119,7 +119,7 @@ pub fn write(w: *Writer, options: Options) !void {
     try w.writeAll("| ");
     try printCell(w, col_name.title, col_name);
     try printCell(w, col_time.title, col_time);
-    if (col_relative.active) try printCell(w, col_relative.title, col_relative);
+    if (col_speedup.active) try printCell(w, col_speedup.title, col_speedup);
     try printCell(w, col_iter.title, col_iter);
     if (col_bytes.active) try printCell(w, col_bytes.title, col_bytes);
     if (col_ops.active) try printCell(w, col_ops.title, col_ops);
@@ -133,7 +133,7 @@ pub fn write(w: *Writer, options: Options) !void {
     try w.writeAll("| ");
     try printDivider(w, col_name);
     try printDivider(w, col_time);
-    if (col_relative.active) try printDivider(w, col_relative);
+    if (col_speedup.active) try printDivider(w, col_speedup);
     try printDivider(w, col_iter);
     if (col_bytes.active) try printDivider(w, col_bytes);
     if (col_ops.active) try printDivider(w, col_ops);
@@ -155,11 +155,11 @@ pub fn write(w: *Writer, options: Options) !void {
         try printCell(w, try fmtTime(&buf, m.mean_ns), col_time);
 
         // Relative
-        if (col_relative.active) {
+        if (col_speedup.active) {
             const base = options.metrics[options.baseline_index.?];
-            const ratio = if (base.mean_ns > 0) m.mean_ns / base.mean_ns else 0;
+            const ratio = if (m.mean_ns > 0) base.mean_ns / m.mean_ns else 0;
             const s_rel = try std.fmt.bufPrint(&buf, "{d:.2}x", .{ratio});
-            try printCell(w, s_rel, col_relative);
+            try printCell(w, s_rel, col_speedup);
         }
 
         // Iterations

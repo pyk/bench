@@ -100,8 +100,8 @@ test "Reporter: Hardware Counters (Sparse Data)" {
 
 test "Reporter: Baseline Comparison" {
     const m_base = createMetrics("Base", 100.0); // Baseline (100ns)
-    const m_fast = createMetrics("Fast", 50.0); // 2x faster (0.50x duration)
-    const m_slow = createMetrics("Slow", 200.0); // 2x slower (2.00x duration)
+    const m_fast = createMetrics("Fast", 50.0); // 2x faster (2.00x speedup)
+    const m_slow = createMetrics("Slow", 200.0); // 2x slower (0.50x speedup)
 
     var buffer: [16 * 1024]u8 = undefined;
     var w: Writer = .fixed(&buffer);
@@ -110,11 +110,11 @@ test "Reporter: Baseline Comparison" {
     try Reporter.write(&w, .{ .metrics = &.{ m_base, m_fast, m_slow }, .baseline_index = 0 });
 
     const expected =
-        "| Benchmark |      Time | Relative | Iterations |   Ops/s | \n" ++
-        "| :-------- | --------: | -------: | ---------: | ------: | \n" ++
-        "| `Base`    | 100.00 ns |    1.00x |    1000000 | 10.0M/s | \n" ++
-        "| `Fast`    |  50.00 ns |    0.50x |    1000000 | 20.0M/s | \n" ++
-        "| `Slow`    | 200.00 ns |    2.00x |    1000000 |  5.0M/s | \n";
+        "| Benchmark |      Time | Speedup | Iterations |   Ops/s | \n" ++
+        "| :-------- | --------: | ------: | ---------: | ------: | \n" ++
+        "| `Base`    | 100.00 ns |   1.00x |    1000000 | 10.0M/s | \n" ++
+        "| `Fast`    |  50.00 ns |   2.00x |    1000000 | 20.0M/s | \n" ++
+        "| `Slow`    | 200.00 ns |   0.50x |    1000000 |  5.0M/s | \n";
 
     try testing.expectEqualStrings(expected, w.buffered());
 }
