@@ -24,7 +24,7 @@ fn createMetrics(name: []const u8, ns: f64) Metrics {
     };
 }
 
-test "MarkdownReporter: Time Unit Scaling (ns, us, ms, s)" {
+test "Reporter: Time Unit Scaling (ns, us, ms, s)" {
     const m_ns = createMetrics("Nano", 100.0);
     const m_us = createMetrics("Micro", 15_000.0);
     const m_ms = createMetrics("Milli", 250_000_000.0);
@@ -46,7 +46,7 @@ test "MarkdownReporter: Time Unit Scaling (ns, us, ms, s)" {
     try testing.expectEqualStrings(expected, w.buffered());
 }
 
-test "MarkdownReporter: Throughput Mixing (Bytes vs Ops)" {
+test "Reporter: Throughput Mixing (Bytes vs Ops)" {
     // Case A: Only Ops/s (Default)
     const m_ops = createMetrics("OpsOnly", 100.0);
 
@@ -73,7 +73,7 @@ test "MarkdownReporter: Throughput Mixing (Bytes vs Ops)" {
     try testing.expectEqualStrings(expected, w.buffered());
 }
 
-test "MarkdownReporter: Hardware Counters (Sparse Data)" {
+test "Reporter: Hardware Counters (Sparse Data)" {
     const m_base = createMetrics("Baseline", 100.0);
 
     var m_full = createMetrics("WithHW", 100.0);
@@ -98,7 +98,7 @@ test "MarkdownReporter: Hardware Counters (Sparse Data)" {
     try testing.expectEqualStrings(expected, w.buffered());
 }
 
-test "MarkdownReporter: Baseline Comparison" {
+test "Reporter: Baseline Comparison" {
     const m_base = createMetrics("Base", 100.0); // Baseline (100ns)
     const m_fast = createMetrics("Fast", 50.0); // 2x faster (0.50x duration)
     const m_slow = createMetrics("Slow", 200.0); // 2x slower (2.00x duration)
