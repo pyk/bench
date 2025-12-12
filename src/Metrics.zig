@@ -5,6 +5,8 @@
 name: []const u8,
 /// Total number of measurement samples collected
 samples: usize,
+/// Number of executions per sample (batch size)
+iterations: u64,
 
 ///////////////////////////////////////////////////////////////////////////////
 // Time
