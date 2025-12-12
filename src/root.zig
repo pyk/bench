@@ -7,7 +7,7 @@ pub const Reporter = @import("Reporter.zig");
 
 pub const Options = Runner.Options;
 pub const run = Runner.run;
-pub const report = Reporter.report;
+pub const report = Reporter.print;
 
 test {
     if (builtin.os.tag == .linux) {
@@ -15,5 +15,4 @@ test {
     }
     _ = @import("Runner.test.zig");
     _ = @import("Reporter.test.zig");
-    _ = @import("reporters/MarkdownReporter.test.zig");
 }
