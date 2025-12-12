@@ -20,7 +20,7 @@
 
 ## Demo
 
-Lets benchmark fibonacci:
+Let's benchmark fib:
 
 ```zig
 const std = @import("std");
@@ -59,7 +59,7 @@ pub fn main() !void {
 }
 ```
 
-Run it and you will get the following output:
+Run it, and you will get the following output in your terminal:
 
 ```markdown
 | Benchmark         |    Time |    Speedup | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
@@ -68,7 +68,8 @@ Run it and you will get the following output:
 | `fibIterative/30` | 3.44 ns | 516055.19x |     300006 | 290.6M/s |   15.9 |         82.0 | 5.15 |          0.0 |
 ```
 
-The benchmark report can be copy-paste directly to Markdown file:
+The benchmark report generates valid Markdown, so you can copy-paste it directly
+into markdown file:
 
 | Benchmark         |    Time |    Speedup | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
 | :---------------- | ------: | ---------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
