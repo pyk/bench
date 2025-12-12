@@ -26,8 +26,8 @@ pub fn main() !void {
         .sample_size = 100,
         .warmup_iters = 3,
     };
-    const m_naive = try bench.run(allocator, "fibNaive", fibNaive, .{30}, opts);
-    const m_iter = try bench.run(allocator, "fibIterative", fibIterative, .{30}, opts);
+    const m_naive = try bench.run(allocator, "fibNaive/30", fibNaive, .{30}, opts);
+    const m_iter = try bench.run(allocator, "fibIterative/30", fibIterative, .{30}, opts);
 
     try bench.report(.{
         .metrics = &.{ m_naive, m_iter },
