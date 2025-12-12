@@ -1,201 +1,245 @@
 const std = @import("std");
 const Writer = std.Io.Writer;
-const tty = std.Io.tty;
-
 const Metrics = @import("Metrics.zig");
 
 pub const Options = struct {
     metrics: []const Metrics,
-    /// The index in 'metrics' to use as the baseline for comparison (e.g 1.00x).
-    /// If null, no comparison column is shown.
     baseline_index: ?usize = null,
 };
 
-/// Prints a formatted summary table to stdout.
-pub fn report(options: Options) !void {
-    var buffer: [0x2000]u8 = undefined;
+const Column = struct {
+    title: []const u8,
+    width: usize,
+    align_right: bool,
+    active: bool,
+};
+
+pub fn print(options: Options) !void {
+    var buffer: [64 * 1024]u8 = undefined;
     var w: Writer = .fixed(&buffer);
-    try writeReport(&w, options);
+    try write(&w, options);
     std.debug.print("{s}", .{w.buffered()});
 }
 
-/// Writes the formatted report to a specific writer
-pub fn writeReport(writer: *Writer, options: Options) !void {
+pub fn write(w: *Writer, options: Options) !void {
     if (options.metrics.len == 0) return;
 
-    try writer.print("Benchmark Summary: {d} benchmarks run\n", .{options.metrics.len});
+    // Initialize columns with Header names and default visibility
+    var col_name = Column{ .title = "Benchmark", .width = 0, .align_right = false, .active = true };
+    var col_time = Column{ .title = "Time", .width = 0, .align_right = true, .active = true };
+    var col_relative = Column{ .title = "Relative", .width = 0, .align_right = true, .active = false };
+    var col_iter = Column{ .title = "Iterations", .width = 0, .align_right = true, .active = true };
 
-    var max_name_len: usize = 0;
-    for (options.metrics) |m| max_name_len = @max(max_name_len, m.name.len);
+    var col_bytes = Column{ .title = "Bytes/s", .width = 0, .align_right = true, .active = false };
+    var col_ops = Column{ .title = "Ops/s", .width = 0, .align_right = true, .active = false };
+    var col_cycles = Column{ .title = "Cycles", .width = 0, .align_right = true, .active = false };
+    var col_instr = Column{ .title = "Instructions", .width = 0, .align_right = true, .active = false };
+    var col_ipc = Column{ .title = "IPC", .width = 0, .align_right = true, .active = false };
+    var col_miss = Column{ .title = "Cache Misses", .width = 0, .align_right = true, .active = false };
 
-    for (options.metrics, 0..) |m, i| {
-        const is_last_item = i == options.metrics.len - 1;
+    // We must format every number to a temporary buffer to know its length.
+    var buf: [64]u8 = undefined;
 
-        // --- ROW 1: High Level (Name | Time | Speed | Comparison) ---
-        const tree_char = if (is_last_item) "└─ " else "├─ ";
-        try writeColor(writer, .bright_black, tree_char);
-        try writeColor(writer, .cyan, m.name);
-        // try writer.print("{s}{s}", .{ tree_char, m.name });
+    // Activate Rel column if baseline_index is valid
+    if (options.baseline_index) |idx| {
+        if (idx < options.metrics.len) {
+            col_relative.active = true;
+        }
+    }
 
-        // Align name
-        const padding = max_name_len - m.name.len + 2;
-        _ = try writer.splatByte(' ', padding);
+    // Check headers first
+    col_name.width = col_name.title.len;
+    col_time.width = col_time.title.len;
+    col_relative.width = col_relative.title.len;
+    // col_cpu.width = col_cpu.title.len;
+    col_iter.width = col_iter.title.len;
+    col_bytes.width = col_bytes.title.len;
+    col_ops.width = col_ops.title.len;
+    col_cycles.width = col_cycles.title.len;
+    col_instr.width = col_instr.title.len;
+    col_ipc.width = col_ipc.title.len;
+    col_miss.width = col_miss.title.len;
 
-        try fmtTime(writer, m.median_ns);
-        try writer.writeAll("   ");
+    for (options.metrics) |m| {
+        // Name: +2 for backticks
+        col_name.width = @max(col_name.width, m.name.len + 2);
 
+        // Time
+        const s_time = try fmtTime(&buf, m.mean_ns);
+        col_time.width = @max(col_time.width, s_time.len);
+
+        // Relative
+        if (col_relative.active) {
+            const base = options.metrics[options.baseline_index.?];
+            // Avoid division by zero
+            const ratio = if (base.mean_ns > 0) m.mean_ns / base.mean_ns else 0;
+            const s_rel = try std.fmt.bufPrint(&buf, "{d:.2}x", .{ratio});
+            col_relative.width = @max(col_relative.width, s_rel.len);
+        }
+
+        // Iterations
+        const s_iter = try std.fmt.bufPrint(&buf, "{d}", .{m.samples});
+        col_iter.width = @max(col_iter.width, s_iter.len);
+
+        // Optional Columns (Enable & Measure)
         if (m.mb_sec > 0.001) {
-            try fmtBandwidth(writer, m.mb_sec);
-        } else {
-            try fmtOps(writer, m.ops_sec);
+            col_bytes.active = true;
+            const s = try fmtBytes(&buf, m.mb_sec);
+            col_bytes.width = @max(col_bytes.width, s.len);
+        }
+        if (m.ops_sec > 0.001 and m.mb_sec <= 0.001) {
+            col_ops.active = true;
+            const s_val = try fmtMetric(&buf, m.ops_sec);
+            // We append "/s" in the final output, so add 2 to length
+            col_ops.width = @max(col_ops.width, s_val.len + 2);
+        }
+        if (m.cycles) |v| {
+            col_cycles.active = true;
+            const s = try fmtMetric(&buf, v);
+            col_cycles.width = @max(col_cycles.width, s.len);
+        }
+        if (m.instructions) |v| {
+            col_instr.active = true;
+            const s = try fmtMetric(&buf, v);
+            col_instr.width = @max(col_instr.width, s.len);
+        }
+        if (m.ipc) |v| {
+            col_ipc.active = true;
+            const s = try std.fmt.bufPrint(&buf, "{d:.2}", .{v});
+            col_ipc.width = @max(col_ipc.width, s.len);
+        }
+        if (m.cache_misses) |v| {
+            col_miss.active = true;
+            const s = try fmtMetric(&buf, v);
+            col_miss.width = @max(col_miss.width, s.len);
+        }
+    }
+
+    // Header Row
+    try w.writeAll("| ");
+    try printCell(w, col_name.title, col_name);
+    try printCell(w, col_time.title, col_time);
+    if (col_relative.active) try printCell(w, col_relative.title, col_relative);
+    try printCell(w, col_iter.title, col_iter);
+    if (col_bytes.active) try printCell(w, col_bytes.title, col_bytes);
+    if (col_ops.active) try printCell(w, col_ops.title, col_ops);
+    if (col_cycles.active) try printCell(w, col_cycles.title, col_cycles);
+    if (col_instr.active) try printCell(w, col_instr.title, col_instr);
+    if (col_ipc.active) try printCell(w, col_ipc.title, col_ipc);
+    if (col_miss.active) try printCell(w, col_miss.title, col_miss);
+    try w.writeAll("\n");
+
+    // Separator Row
+    try w.writeAll("| ");
+    try printDivider(w, col_name);
+    try printDivider(w, col_time);
+    if (col_relative.active) try printDivider(w, col_relative);
+    try printDivider(w, col_iter);
+    if (col_bytes.active) try printDivider(w, col_bytes);
+    if (col_ops.active) try printDivider(w, col_ops);
+    if (col_cycles.active) try printDivider(w, col_cycles);
+    if (col_instr.active) try printDivider(w, col_instr);
+    if (col_ipc.active) try printDivider(w, col_ipc);
+    if (col_miss.active) try printDivider(w, col_miss);
+    try w.writeAll("\n");
+
+    // Data Rows
+    for (options.metrics) |m| {
+        try w.writeAll("| ");
+
+        // Name
+        const name_s = try std.fmt.bufPrint(&buf, "`{s}`", .{m.name});
+        try printCell(w, name_s, col_name);
+
+        // Time
+        try printCell(w, try fmtTime(&buf, m.mean_ns), col_time);
+
+        // Relative
+        if (col_relative.active) {
+            const base = options.metrics[options.baseline_index.?];
+            const ratio = if (base.mean_ns > 0) m.mean_ns / base.mean_ns else 0;
+            const s_rel = try std.fmt.bufPrint(&buf, "{d:.2}x", .{ratio});
+            try printCell(w, s_rel, col_relative);
         }
 
-        // Comparison (On the first line now)
-        if (options.baseline_index) |base_idx| {
-            try writer.writeAll("   ");
-            if (i == base_idx) {
-                try writeColor(writer, .blue, "[baseline]");
-            } else if (base_idx < options.metrics.len) {
-                const base = options.metrics[base_idx];
-                const base_f = base.median_ns;
-                const curr_f = m.median_ns;
+        // Iterations
+        const iter_s = try std.fmt.bufPrint(&buf, "{d}", .{m.iterations});
+        try printCell(w, iter_s, col_iter);
 
-                if (curr_f > 0 and base_f > 0) {
-                    if (curr_f < base_f) {
-                        try writer.writeAll("\x1b[32m"); // Green manually to mix with print
-                        try writer.print("{d:.2}x faster", .{base_f / curr_f});
-                        try writer.writeAll("\x1b[0m");
-                    } else {
-                        try writer.writeAll("\x1b[31m");
-                        try writer.print("{d:.2}x slower", .{curr_f / base_f});
-                        try writer.writeAll("\x1b[0m");
-                    }
-                } else {
-                    try writer.writeAll("-");
-                }
-            }
+        // Optional
+        if (col_bytes.active) {
+            if (m.mb_sec > 0.001) try printCell(w, try fmtBytes(&buf, m.mb_sec), col_bytes) else try printCell(w, "-", col_bytes);
         }
-        try writer.writeByte('\n');
-
-        // Only printed if we have hardware stats
-        if (m.cycles) |cycles| {
-            const sub_tree_prefix = if (is_last_item) "   └─ " else "│  └─ ";
-            try writer.writeAll(sub_tree_prefix);
-            try writeColor(writer, .dim, "cycles: ");
-            try fmtInt(writer, cycles);
+        if (col_ops.active) {
+            if (m.ops_sec > 0.001) {
+                // Must manually construct the string with suffix to match width measurement
+                const val = try fmtMetric(&buf, m.ops_sec);
+                var buf2: [64]u8 = undefined;
+                const final = try std.fmt.bufPrint(&buf2, "{s}/s", .{val});
+                try printCell(w, final, col_ops);
+            } else try printCell(w, "-", col_ops);
+        }
+        if (col_cycles.active) {
+            if (m.cycles) |v| try printCell(w, try fmtMetric(&buf, v), col_cycles) else try printCell(w, "-", col_cycles);
+        }
+        if (col_instr.active) {
+            if (m.instructions) |v| try printCell(w, try fmtMetric(&buf, v), col_instr) else try printCell(w, "-", col_instr);
+        }
+        if (col_ipc.active) {
+            if (m.ipc) |v| {
+                const s = try std.fmt.bufPrint(&buf, "{d:.2}", .{v});
+                try printCell(w, s, col_ipc);
+            } else try printCell(w, "-", col_ipc);
+        }
+        if (col_miss.active) {
+            if (m.cache_misses) |v| try printCell(w, try fmtMetric(&buf, v), col_miss) else try printCell(w, "-", col_miss);
         }
 
-        if (m.instructions) |instructions| {
-            try writer.writeAll("\t");
-            try writeColor(writer, .dim, "instructions: ");
-            try fmtInt(writer, instructions);
-        }
-
-        if (m.ipc) |ipc| {
-            try writer.writeAll("\t");
-            try writeColor(writer, .dim, "ipc: ");
-            try writer.print("{d:.2}", .{ipc});
-        }
-
-        if (m.cache_misses) |cache_missess| {
-            try writer.writeAll("\t");
-            try writeColor(writer, .dim, "miss: ");
-            try fmtInt(writer, cache_missess);
-
-            try writer.writeByte('\n');
-        }
+        try w.writeAll("\n");
     }
 }
 
-fn writeColor(writer: *Writer, color: tty.Color, text: []const u8) !void {
-    const config = tty.Config.detect(std.fs.File.stdout());
-    if (config != .no_color) {
-        switch (color) {
-            .reset => try writer.writeAll("\x1b[0m"),
-            .red => try writer.writeAll("\x1b[31m"),
-            .green => try writer.writeAll("\x1b[32m"),
-            .blue => try writer.writeAll("\x1b[34m"),
-            .cyan => try writer.writeAll("\x1b[36m"),
-            .dim => try writer.writeAll("\x1b[2m"),
-            .black => try writer.writeAll("\x1b[90m"),
-            else => try writer.writeAll(""),
-        }
-    }
-    try writer.writeAll(text);
-    if (config != .no_color) try writer.writeAll("\x1b[0m");
-}
+fn printCell(w: *Writer, text: []const u8, col: Column) !void {
+    const pad_len = if (col.width > text.len) col.width - text.len else 0;
 
-////////////////////////////////////////////////////////////////////////////////
-// formatters
-
-fn fmtInt(writer: *Writer, val: f64) !void {
-    if (val < 1000) {
-        try writer.print("{d:.0}", .{val});
-    } else if (val < 1_000_000) {
-        try writer.print("{d:.1}k", .{val / 1000.0});
-    } else if (val < 1_000_000_000) {
-        try writer.print("{d:.1}M", .{val / 1_000_000.0});
+    if (col.align_right) {
+        _ = try w.splatByte(' ', pad_len);
+        try w.writeAll(text);
     } else {
-        try writer.print("{d:.1}G", .{val / 1_000_000_000.0});
+        try w.writeAll(text);
+        _ = try w.splatByte(' ', pad_len);
     }
+    try w.writeAll(" | ");
 }
 
-fn fmtTime(writer: *Writer, ns: f64) !void {
-    var buf: [64]u8 = undefined;
-    var slice: []u8 = undefined;
-
-    if (ns < 1000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}ns", .{ns});
-    } else if (ns < 1_000_000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}us", .{ns / 1000.0});
-    } else if (ns < 1_000_000_000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}ms", .{ns / 1_000_000.0});
+fn printDivider(w: *Writer, col: Column) !void {
+    if (col.align_right) {
+        // "-----------:"
+        _ = try w.splatByte('-', col.width - 1);
+        try w.writeAll(":");
     } else {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}s", .{ns / 1_000_000_000.0});
+        // ":-----------"
+        try w.writeAll(":");
+        _ = try w.splatByte('-', col.width - 1);
     }
-    try padLeft(writer, slice, 9);
+    try w.writeAll(" | ");
 }
 
-fn fmtOps(writer: *Writer, ops: f64) !void {
-    var buf: [64]u8 = undefined;
-    var slice: []u8 = undefined;
-
-    if (ops < 1000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.0}/s", .{ops});
-    } else if (ops < 1_000_000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}K/s", .{ops / 1000.0});
-    } else if (ops < 1_000_000_000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}M/s", .{ops / 1_000_000.0});
-    } else {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}G/s", .{ops / 1_000_000_000.0});
-    }
-    try padLeft(writer, slice, 11);
+fn fmtTime(buf: []u8, ns: f64) ![]const u8 {
+    if (ns < 1_000) return std.fmt.bufPrint(buf, "{d:.2} ns", .{ns});
+    if (ns < 1_000_000) return std.fmt.bufPrint(buf, "{d:.2} us", .{ns / 1_000.0});
+    if (ns < 1_000_000_000) return std.fmt.bufPrint(buf, "{d:.2} ms", .{ns / 1_000_000.0});
+    return std.fmt.bufPrint(buf, "{d:.2} s", .{ns / 1_000_000_000.0});
 }
 
-fn fmtBandwidth(writer: *Writer, mb: f64) !void {
-    var buf: [64]u8 = undefined;
-    var slice: []u8 = undefined;
-
-    if (mb >= 1000) {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}GB/s", .{mb / 1000.0});
-    } else {
-        slice = try std.fmt.bufPrint(&buf, "{d:.2}MB/s", .{mb});
-    }
-    try padLeft(writer, slice, 11);
+fn fmtBytes(buf: []u8, mb: f64) ![]const u8 {
+    if (mb > 1000) return std.fmt.bufPrint(buf, "{d:.2}GB/s", .{mb / 1024.0});
+    return std.fmt.bufPrint(buf, "{d:.2}MB/s", .{mb});
 }
 
-// Pads with spaces on the left (for numbers)
-fn padLeft(writer: *Writer, text: []const u8, width: usize) !void {
-    if (text.len < width) {
-        _ = try writer.splatByte(' ', width - text.len);
-    }
-    try writer.writeAll(text);
-}
-
-// Pads with spaces on the right (for text/comparisons)
-fn padRight(writer: *Writer, text: []const u8, width: usize) !void {
-    try writer.writeAll(text);
-    if (text.len < width) {
-        _ = try writer.splatByte(' ', width - text.len);
-    }
+fn fmtMetric(buf: []u8, val: f64) ![]const u8 {
+    if (val < 1_000) return std.fmt.bufPrint(buf, "{d:.1}", .{val});
+    if (val < 1_000_000) return std.fmt.bufPrint(buf, "{d:.1}k", .{val / 1_000.0});
+    if (val < 1_000_000_000) return std.fmt.bufPrint(buf, "{d:.1}M", .{val / 1_000_000.0});
+    return std.fmt.bufPrint(buf, "{d:.1}G", .{val / 1_000_000_000.0});
 }

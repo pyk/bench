@@ -8,7 +8,6 @@ fn fibNaive(n: u64) u64 {
 
 fn fibIterative(n: u64) u64 {
     if (n == 0) return 0;
-
     var a: u64 = 0;
     var b: u64 = 1;
     for (2..n + 1) |_| {
@@ -16,7 +15,6 @@ fn fibIterative(n: u64) u64 {
         a = b;
         b = c;
     }
-
     return b;
 }
 
@@ -26,8 +24,8 @@ pub fn main() !void {
         .sample_size = 100,
         .warmup_iters = 3,
     };
-    const m_naive = try bench.run(allocator, "fibNaive", fibNaive, .{30}, opts);
-    const m_iter = try bench.run(allocator, "fibIterative", fibIterative, .{30}, opts);
+    const m_naive = try bench.run(allocator, "fibNaive/30", fibNaive, .{30}, opts);
+    const m_iter = try bench.run(allocator, "fibIterative/30", fibIterative, .{30}, opts);
 
     try bench.report(.{
         .metrics = &.{ m_naive, m_iter },

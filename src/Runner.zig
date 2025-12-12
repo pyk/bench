@@ -102,6 +102,7 @@ pub fn run(allocator: Allocator, name: []const u8, function: anytype, args: anyt
         .median_ns = samples[options.sample_size / 2],
         .std_dev_ns = math.sqrt(variance),
         .samples = options.sample_size,
+        .iterations = batch_size,
         .ops_sec = ops_sec,
         .mb_sec = mb_sec,
     };
