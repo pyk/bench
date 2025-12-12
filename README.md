@@ -61,12 +61,19 @@ pub fn main() !void {
 
 Run it and you will get the following output:
 
-| Benchmark         |    Time | Relative | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
-| :---------------- | ------: | -------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
-| `fibNaive/30`     | 1.77 ms |    1.00x |          1 |  564.7/s |   8.1M |        27.8M | 3.41 |          0.3 |
-| `fibIterative/30` | 3.44 ns |    0.00x |     300006 | 290.7M/s |   15.9 |         82.0 | 5.15 |          0.0 |
+```markdown
+| Benchmark         |    Time |    Speedup | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
+| :---------------- | ------: | ---------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
+| `fibNaive/30`     | 1.78 ms |      1.00x |          1 |  563.2/s |   8.1M |        27.8M | 3.41 |          0.3 |
+| `fibIterative/30` | 3.44 ns | 516055.19x |     300006 | 290.6M/s |   15.9 |         82.0 | 5.15 |          0.0 |
+```
 
-Yes, the output is markdown table.
+The benchmark report can be copy-paste directly to Markdown file:
+
+| Benchmark         |    Time |    Speedup | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
+| :---------------- | ------: | ---------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
+| `fibNaive/30`     | 1.78 ms |      1.00x |          1 |  563.2/s |   8.1M |        27.8M | 3.41 |          0.3 |
+| `fibIterative/30` | 3.44 ns | 516055.19x |     300006 | 290.6M/s |   15.9 |         82.0 | 5.15 |          0.0 |
 
 ## Features
 
@@ -207,11 +214,11 @@ const res = try bench.run(allocator, "Heavy Task", heavyFn, .{
 The default bench.report prints a clean, Markdown-compatible table to stdout. It
 automatically handles unit scaling (`ns`, `us`, `ms`, `s`) and formatting.
 
-```sh
-| Benchmark         |    Time | Relative | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
-| :---------------- | ------: | -------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
-| `fibNaive/30`     | 1.77 ms |    1.00x |          1 |  564.7/s |   8.1M |        27.8M | 3.41 |          0.3 |
-| `fibIterative/30` | 3.44 ns |    0.00x |     300006 | 290.7M/s |   15.9 |         82.0 | 5.15 |          0.0 |
+```markdown
+| Benchmark         |    Time |    Speedup | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
+| :---------------- | ------: | ---------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
+| `fibNaive/30`     | 1.78 ms |      1.00x |          1 |  563.2/s |   8.1M |        27.8M | 3.41 |          0.3 |
+| `fibIterative/30` | 3.44 ns | 516055.19x |     300006 | 290.6M/s |   15.9 |         82.0 | 5.15 |          0.0 |
 ```
 
 ### Custom Reporter
