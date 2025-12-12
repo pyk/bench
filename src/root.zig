@@ -15,4 +15,5 @@ test {
     }
     _ = @import("Runner.test.zig");
     _ = @import("Reporter.test.zig");
+    _ = @import("reporters/MarkdownReporter.test.zig");
 }
