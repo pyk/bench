@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  Fast & Accurate Benchmarking for Zig
+  Fast & Accurate Microbenchmarking for Zig
 <p>
 
 <p align="center">
@@ -17,6 +17,56 @@
   <img src="https://img.shields.io/github/check-runs/pyk/bench/main?colorA=00f&colorB=fff&style=flat&logo=github" alt="CI Runs">
   <img src="https://img.shields.io/github/license/pyk/bench?colorA=00f&colorB=fff&style=flat" alt="MIT License">
 </p>
+
+## Demo
+
+Lets benchmark fibonacci:
+
+```zig
+const std = @import("std");
+const bench = @import("bench");
+
+fn fibNaive(n: u64) u64 {
+    if (n <= 1) return n;
+    return fibNaive(n - 1) + fibNaive(n - 2);
+}
+
+fn fibIterative(n: u64) u64 {
+    if (n == 0) return 0;
+    var a: u64 = 0;
+    var b: u64 = 1;
+    for (2..n + 1) |_| {
+        const c = a + b;
+        a = b;
+        b = c;
+    }
+    return b;
+}
+
+pub fn main() !void {
+    const allocator = std.heap.smp_allocator;
+    const opts = bench.Options{
+        .sample_size = 100,
+        .warmup_iters = 3,
+    };
+    const m_naive = try bench.run(allocator, "fibNaive/30", fibNaive, .{30}, opts);
+    const m_iter = try bench.run(allocator, "fibIterative/30", fibIterative, .{30}, opts);
+
+    try bench.report(.{
+        .metrics = &.{ m_naive, m_iter },
+        .baseline_index = 0, // naive as baseline
+    });
+}
+```
+
+Run it and you will get the following output:
+
+| Benchmark         |    Time | Relative | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
+| :---------------- | ------: | -------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
+| `fibNaive/30`     | 1.77 ms |    1.00x |          1 |  564.7/s |   8.1M |        27.8M | 3.41 |          0.3 |
+| `fibIterative/30` | 3.44 ns |    0.00x |     300006 | 290.7M/s |   15.9 |         82.0 | 5.15 |          0.0 |
+
+Yes, the output is markdown table.
 
 ## Features
 
@@ -32,8 +82,6 @@
   and data throughput (MB/s, GB/s) when payload size is provided.
 - **Robust Statistics**: Uses median and standard deviation to provide reliable
   metrics despite system noise.
-- **Zero Dependencies**: Implemented in pure Zig using only the standard
-  library.
 
 ## Installation
 
@@ -156,19 +204,14 @@ const res = try bench.run(allocator, "Heavy Task", heavyFn, .{
 
 ### Built-in Reporter
 
-The default `bench.report` prints a human-readable table to stdout. It handles
-units (ns, us, ms, s) and coloring automatically.
+The default bench.report prints a clean, Markdown-compatible table to stdout. It
+automatically handles unit scaling (`ns`, `us`, `ms`, `s`) and formatting.
 
 ```sh
-$ zig build quicksort
-Benchmarking Sorting Algorithms Against Random Input (N=10000)...
-Benchmark Summary: 3 benchmarks run
-├─ Unsafe Quicksort (Lomuto)   358.64us    110.98MB/s   1.29x faster
-│  └─ cycles: 1.6M      instructions: 1.2M      ipc: 0.75       miss: 65
-├─ Unsafe Quicksort (Hoare)    383.02us    104.32MB/s   1.21x faster
-│  └─ cycles: 1.7M      instructions: 1.3M      ipc: 0.76       miss: 56
-└─ std.mem.sort                462.25us     86.45MB/s   [baseline]
-   └─ cycles: 2.0M      instructions: 2.6M      ipc: 1.30       miss: 143
+| Benchmark         |    Time | Relative | Iterations |    Ops/s | Cycles | Instructions |  IPC | Cache Misses |
+| :---------------- | ------: | -------: | ---------: | -------: | -----: | -----------: | ---: | -----------: |
+| `fibNaive/30`     | 1.77 ms |    1.00x |          1 |  564.7/s |   8.1M |        27.8M | 3.41 |          0.3 |
+| `fibIterative/30` | 3.44 ns |    0.00x |     300006 | 290.7M/s |   15.9 |         82.0 | 5.15 |          0.0 |
 ```
 
 ### Custom Reporter
