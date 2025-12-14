@@ -262,33 +262,93 @@ points:
 _\*Hardware metrics are currently available on Linux only. They will be `null`
 on other platforms or if permissions are restricted._
 
-## Notes
+## Tips
 
-- This library is designed to show you "what", not "why". I recommend using a
-  proper profiling tool such as `perf` on linux + Firefox Profiler to answer
-  "why".
-- `doNotOptimizeAway` is your friend. For example if you are benchmarking some
-  scanner/tokenizer:
+### Use Profiling Tools to Find Why Code is Slow
 
-  ```zig
-    while (true) {
-        const token = try scanner.next();
-        if (token == .end) break;
-        total_ops += 1;
-        std.mem.doNotOptimizeAway(token); // CRITICAL
-    }
-  ```
+`bench` shows you the time your code takes. It tells you "what" the speed is.
+But it does not tell you "why" it is slow. To find out why, use tools like
+`perf` on Linux. Or use Firefox Profiler. These tools show you where the CPU
+spends time. For example, `perf record` runs your code and collects data. Then
+`perf report` shows hotspots. Like too many branches or cache misses. This helps
+you fix the real problems.
 
-- To get `cycles`, `instructions`, `ipc` (instructions per cycle) and
-  `cache_misses` metrics on Linux, you may need to enable the
-  `kernel.perf_event_paranoid`.
+### Use `std.mem.doNotOptimizeAway`
 
-## Prior Art
+The compiler can remove code if it thinks it does nothing. For example, if you
+compute a value but never use it, the compiler skips the work. This makes
+benchmarks wrong. It shows fast times for code that does not run.To stop this,
+use `std.mem.doNotOptimizeAway`. Pass your result to it. The compiler must
+compute it then. For example, in a scanner or tokenizer:
+
+```zig
+while (true) {
+    const token = try scanner.next();
+    if (token == .end) break;
+    std.mem.doNotOptimizeAway(token); // CRITICAL
+}
+```
+
+Here, `doNotOptimizeAway(token)` forces the compiler to run `scanner.next()`.
+Without it, the loop might empty. Always use this on key results. Like counts,
+parsed values, or outputs.
+
+### Enable Kernel Perf Event on Linux for Hardware Metrics
+
+On Linux, hardware metrics like cycles and instructions come from the kernel.
+But by default, it limits access. You get null values.
+
+To fix, run:
+
+```sh
+sudo sysctl -w kernel.perf_event_paranoid=-1
+```
+
+This allows your code to read counters. Set to `2` to restrict again.
+
+Check with `cat /proc/sys/kernel/perf_event_paranoid`. Lower values mean more
+access. Value `-1` is full. Use it for benchmarks. But be careful in production.
+
+### Avoid Constant Inputs in Benchmarks
+
+If you use constant data like `const input = "hello";`, the compiler knows it at
+build time. It can unroll loops or compute results ahead. Your benchmark
+measures nothing real. Times stay flat even if data grows.
+
+Instead, use runtime data. Allocate a buffer and fill it.
+
+Bad example:
+
+```zig
+const input = "    hello"; // Compiler knows every byte
+const res = try bench.run(allocator, "Parser", parse, .{input}, .{});
+```
+
+Good example:
+
+```zig
+var input = try allocator.alloc(u8, 100);
+defer allocator.free(input);
+@memset(input[0..4], ' ');
+@memcpy(input[4..], "hello");
+const res = try bench.run(allocator, "Parser", parse, .{input}, .{});
+```
+
+Now, the buffer is dynamic. The compiler cannot fold it. Times scale with real
+work. For varying tests, change the memset size each run.
+
+## References
+
+### Prior Art
 
 - [hendriknielaender/zBench](https://github.com/hendriknielaender/zBench)
 - [Hejsil/zig-bench](https://github.com/Hejsil/zig-bench)
 - [briangold/metron](https://github.com/briangold/metron)
 - [dweiller/zubench](https://github.com/dweiller/zubench)
+
+### Resources
+
+- [Google Benchmark User Guide](https://github.com/google/benchmark/blob/main/docs/user_guide.md)
 
 ## Development
 
