@@ -268,18 +268,19 @@ on other platforms or if permissions are restricted._
 
 `bench` shows you the time your code takes. It tells you "what" the speed is.
 But it does not tell you "why" it is slow. To find out why, use tools like
-`perf` on Linux. Or use Firefox Profiler. These tools show you where the CPU
-spends time. For example, `perf record` runs your code and collects data. Then
-`perf report` shows hotspots. Like too many branches or cache misses. This helps
-you fix the real problems.
+`perf` on Linux. These tools show you where the CPU spends time. For example,
+`perf record` runs your code and collects data. Then `perf report` or
+[Firefox Profiler](https://profiler.firefox.com/) shows hotspots. This helps you
+fix the real problems.
 
 ### Use `std.mem.doNotOptimizeAway`
 
 The compiler can remove code if it thinks it does nothing. For example, if you
 compute a value but never use it, the compiler skips the work. This makes
-benchmarks wrong. It shows fast times for code that does not run.To stop this,
-use `std.mem.doNotOptimizeAway`. Pass your result to it. The compiler must
-compute it then. For example, in a scanner or tokenizer:
+benchmarks wrong. It shows fast times for code that does not run.
+
+To stop this, use `std.mem.doNotOptimizeAway`. Pass your result to it. The
+compiler must compute it then. For example, in a scanner or tokenizer:
 
 ```zig
 while (true) {
@@ -339,6 +340,12 @@ work. For varying tests, change the memset size each run.
 
 ## References
 
+### Devlog
+
+- [Fixing Microbenchmark Accuracy](https://pyk.sh/blog/2025-12-07-bench-fixing-microbenchmark-accuracy-in-zig)
+- [Fixing Zig benchmark where `std.mem.doNotOptimizeAway` was ignored](https://pyk.sh/blog/2025-12-08-bench-fixing-constant-folding)
+- [Writing a Type-Safe Linux Perf Interface in Zig](https://pyk.sh/blog/2025-12-11-type-safe-linux-perf-event-open-in-zig)
+
 ### Prior Art
 
 - [hendriknielaender/zBench](https://github.com/hendriknielaender/zBench)
@@ -380,12 +387,6 @@ sudo sysctl -w kernel.perf_event_paranoid=2
 # Allow access (Required for CPU metrics)
 sudo sysctl -w kernel.perf_event_paranoid=-1
 ```
-
-## Devlog
-
-- [Fixing Microbenchmark Accuracy](https://pyk.sh/blog/2025-12-07-bench-fixing-microbenchmark-accuracy-in-zig)
-- [Fixing Zig benchmark where `std.mem.doNotOptimizeAway` was ignored](https://pyk.sh/blog/2025-12-08-bench-fixing-constant-folding)
-- [Writing a Type-Safe Linux Perf Interface in Zig](https://pyk.sh/blog/2025-12-11-type-safe-linux-perf-event-open-in-zig)
 
 ## License
 
